@@ -1,0 +1,905 @@
+// ============================================================================
+// sing-box 1.13.11 → 1.13.12 配置变更说明
+// 平台: Android / sing-box 1.13.12
+// 标注: [+]新增 [-]删除 [*]修改 [!]敏感信息已屏蔽
+// ============================================================================
+
+{
+  // ---------------------------------------------------------------------------
+  // 日志 [*] trace → info (减少日志量,提升性能)
+  // ---------------------------------------------------------------------------
+  "log": {
+    "level": "info",          // [*] 原 trace
+    "timestamp": true
+  },
+
+  // ---------------------------------------------------------------------------
+  // NTP (无变更)
+  // ---------------------------------------------------------------------------
+  "ntp": {
+    "enabled": true,
+    "server": "ntp.aliyun.com",
+    "server_port": 123,
+    "interval": "30m"
+  },
+
+  // =========================================================================
+  // DNS 模块 (核心变更区)
+  // =========================================================================
+  "dns": {
+    "servers": [
+      // [-] 删除: { "tag":"alidns_udp","type":"udp","server":"223.5.5.5" }
+      //     原因: 国内DNS UDP明文,运营商可劫持
+      // [+] 新增: 阿里DoH(加密) + 腾讯DoH/UDP + Cloudflare备用, 共4个
+      // [*] 旧版只有4个服务器, 新版8个
+
+      {
+        "tag": "local",
+        "type": "local"
+      },
+
+      // [+] 阿里DoH (WiFi主力, 加密)
+      {
+        "tag": "alidns_doh",
+        "type": "https",
+        "server": "dns.alidns.com",                   // [!] 主机名(不能带https://)
+        "domain_resolver": "alidns_quic"              // [+] 必加: 用IP型DNS解析自身
+      },
+
+      // [+] 阿里UDP (域名型DNS的解析器, IP直连无循环依赖)
+      {
+        "tag": "alidns_quic",
+        "type": "udp",
+        "server": "223.5.5.5"                         // [!]
+      },
+
+      // [+] 腾讯DoH (联通/电信宽带优化)
+      {
+        "tag": "dnspod_doh",
+        "type": "https",
+        "server": "doh.pub",                          // [!]
+        "domain_resolver": "alidns_quic"
+      },
+
+      // [+] 腾讯UDP (蜂窝4G/5G主力, 三网低延迟)
+      {
+        "tag": "dnspod_quic",
+        "type": "udp",
+        "server": "119.29.29.29"                      // [!]
+      },
+
+      // [*] 原ggdns_doh: 无domain_resolver → 加了
+      {
+        "tag": "ggdns_doh",
+        "type": "https",
+        "server": "dns.google",                       // [!]
+        "detour": "PROXY",
+        "domain_resolver": "alidns_quic"              // [+] 必须: 解析自身域名
+      },
+
+      // [+] Cloudflare DoH (国外备用)
+      {
+        "tag": "cfdns_doh",
+        "type": "https",
+        "server": "cloudflare-dns.com",               // [!]
+        "detour": "PROXY",
+        "domain_resolver": "alidns_quic"
+      },
+
+      // (无变更)
+      {
+        "tag": "fakeip",
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15"
+      }
+    ],
+
+    "rules": [
+      // -----------------------------------------------------------------------
+      // [+] 新增规则[0]: 蜂窝网络 → 腾讯UDP
+      //     4G/5G下用UDP(低开销低延迟), WiFi走下面规则[1]的DoH
+      // -----------------------------------------------------------------------
+      {
+        "network_type": "cellular",                   // [+] 新增条件
+        "domain_suffix": [
+          ".local",
+          ".lan",
+          "miwifi.com",                               // [!]
+          "tplogin.cn",                               // [!]
+          "router.asus.com",                          // [!]
+          "tendawifi.com",                            // [!]
+          "tplinkwifi.net",                           // [!]
+          "app-measurement.com",                      // [!]
+          "hm.baidu.com",                             // [!]
+          "firebaselogging.googleapis.com",           // [!]
+          "firebaselogging-pa.googleapis.com",        // [!]
+          "beacons.gvt2.com",                         // [!]
+          "beacons2.gvt2.com",                        // [!]
+          "beacons3.gvt2.com",                        // [!]
+          "tracking.miui.com",                        // [!]
+          "market.xiaomi.com",                        // [!]
+          "lancache.steamcontent.com"                 // [!]
+        ],
+        "server": "dnspod_quic"                       // [+] 蜂窝走腾讯UDP
+      },
+
+      // [*] 原规则[0]: "server":"alidns_udp" → "alidns_doh"
+      {
+        "domain_suffix": [
+          ".local",
+          ".lan",
+          "miwifi.com",                               // [!]
+          "tplogin.cn",                               // [!]
+          "router.asus.com",                          // [!]
+          "tendawifi.com",                            // [!]
+          "tplinkwifi.net",                           // [!]
+          "app-measurement.com",                      // [!]
+          "hm.baidu.com",                             // [!]
+          "firebaselogging.googleapis.com",           // [!]
+          "firebaselogging-pa.googleapis.com",        // [!]
+          "beacons.gvt2.com",                         // [!]
+          "beacons2.gvt2.com",                        // [!]
+          "beacons3.gvt2.com",                        // [!]
+          "tracking.miui.com",                        // [!]
+          "market.xiaomi.com",                        // [!]
+          "lancache.steamcontent.com"                 // [!]
+        ],
+        "server": "alidns_doh"                        // [*] 原 alidns_udp
+      },
+
+      // [*] 原: "domain_suffix":["节点域名"] → 覆盖全部节点域名
+      {
+        "domain_suffix": [
+          ".节点域名后缀1",                           // [!] 原 "节点域名"占位符
+          ".节点域名后缀2",                           // [!] 新增
+          "节点裸域名"                                // [!] 新增
+        ],
+        "server": "ggdns_doh"
+      },
+
+      // (无变更)
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+
+      // (无变更)
+      {
+        "query_type": [
+          "SVCB",
+          "HTTPS",
+          "PTR"
+        ],
+        "action": "reject"
+      },
+
+      // [*] 原: 有 "client_subnet":"xxx" → 移到dns全局参数
+      {
+        "rule_set": ["proxy", "games", "ai"],
+        "query_type": ["A", "AAAA"],
+        "server": "fakeip",
+        "rewrite_ttl": 300
+        // [-] "client_subnet": "119.134.100.0/24"  移到全局
+      },
+
+      // (无变更)
+      {
+        "domain_suffix": [
+          "play.google.com",                          // [!]
+          "ggpht.com",                                // [!]
+          "googleusercontent.com",                    // [!]
+          "android.com"                               // [!]
+        ],
+        "server": "fakeip"
+      },
+
+      // [*] "server":"alidns_udp" → "alidns_doh"
+      {
+        "clash_mode": "direct",
+        "server": "alidns_doh"                        // [*] 原 alidns_udp
+      },
+
+      // (无变更)
+      {
+        "clash_mode": "global",
+        "server": "fakeip"
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // DNS 全局参数
+    // -------------------------------------------------------------------------
+    "final": "ggdns_doh",
+    "strategy": "ipv4_only",
+    "reverse_mapping": true,
+
+    // [+] 新增: EDNS client-subnet (告知CDN用户网段)
+    "client_subnet": "用户IP段/24",                   // [!]
+
+    // [*] 8000 → 65536 (缓存扩容8倍)
+    "cache_capacity": 65536
+  },
+
+  // =========================================================================
+  // 入站
+  // =========================================================================
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": [
+        "10.8.0.1/24"
+      ],
+      "mtu": 1500,
+      "stack": "mixed",
+      "auto_route": true,
+      "strict_route": true,
+
+      // [+] 新增: UDP空闲30秒关闭(省电)
+      "udp_timeout": "30s"
+
+      // [-] 删除: sniff_timeout / sniff_override_destination
+      //     1.13.0已从入站移除, sniff改用 route.rules action:"sniff"
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7890
+    }
+  ],
+
+  // =========================================================================
+  // 出站 (节点区)
+  // =========================================================================
+  "outbounds": [
+    // (无变更)
+    {
+      "type": "direct",
+      "tag": "DIRECT"
+    },
+
+    // (无变更)
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [
+        "AUTO",
+        "pkpk01",
+        "pkpk02",
+        "pkpk03",
+        "pkpk04",
+        "pkpk05",
+        "pkpk06",
+        "DIRECT"
+      ],
+      "default": "AUTO",
+      "interrupt_exist_connections": false
+    },
+
+    // (无变更)
+    {
+      "type": "urltest",
+      "tag": "AUTO",
+      "outbounds": [
+        "pkpk01",
+        "pkpk02",
+        "pkpk03",
+        "pkpk04",
+        "pkpk05",
+        "pkpk06"
+      ],
+      "url": "http://cp.cloudflare.com/",
+      "interval": "10m",
+      "tolerance": 50,
+      "idle_timeout": "30m",
+      "interrupt_exist_connections": false
+    },
+
+    // (无变更)
+    {
+      "type": "selector",
+      "tag": "GLOBAL",
+      "outbounds": [
+        "PROXY",
+        "DIRECT"
+      ],
+      "default": "PROXY",
+      "interrupt_exist_connections": false
+    },
+
+    // (无变更)
+    {
+      "type": "selector",
+      "tag": "CN",
+      "outbounds": [
+        "DIRECT",
+        "PROXY"
+      ],
+      "default": "DIRECT",
+      "interrupt_exist_connections": false
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk01: reality VLESS
+    // -------------------------------------------------------------------------
+    {
+      "type": "vless",
+      "tag": "pkpk01",
+      "server": "节点服务器地址",                    // [!]
+      "server_port": 7173,
+      "uuid": "屏蔽的UUID",                         // [!]
+      "flow": "xtls-rprx-vision",
+
+      // [+] 新增: TCP Fast Open (重连跳过三次握手)
+      "tcp_fast_open": true,
+
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",         // [!] reality伪装域名
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "屏蔽的PublicKey"            // [!]
+        }
+      },
+      "multiplex": {
+        // [-] 删除: "enabled":true  ← 之前修复时误加
+        //     reality VLESS 不兼容 h2mux, 无enabled=禁用(正确)
+        "protocol": "h2mux",
+
+        // [*] max_connections → max_streams (h2mux正确字段名)
+        "max_streams": 16,
+
+        "padding": true,                             // [+] 新增: 混淆流量特征
+
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      },
+      "packet_encoding": "xudp"
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk02: WS VLESS
+    // -------------------------------------------------------------------------
+    {
+      "type": "vless",
+      "tag": "pkpk02",
+      "server": "节点服务器地址",                    // [!]
+      "server_port": 443,
+      "uuid": "屏蔽的UUID",                         // [!]
+
+      // [+] 新增
+      "tcp_fast_open": true,
+
+      "tls": {
+        "enabled": true,
+        "server_name": "节点TLS域名",               // [!]
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/sba-vl",                           // [!]
+        "headers": {
+          "Host": "节点TLS域名"                     // [!]
+        },
+        "max_early_data": 2560,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk03: WS VLESS 套CDN
+    // -------------------------------------------------------------------------
+    {
+      "type": "vless",
+      "tag": "pkpk03",
+      "server": "CDN伪装域名",                       // [!]
+      "server_port": 443,
+      "uuid": "屏蔽的UUID",                         // [!]
+
+      // [+] 新增
+      "tcp_fast_open": true,
+
+      "tls": {
+        "enabled": true,
+        "server_name": "节点TLS域名",               // [!]
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/sba-vl",                           // [!]
+        "headers": {
+          "Host": "节点TLS域名"                     // [!]
+        },
+        "max_early_data": 2560,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk04: WS VLESS 套CF
+    // -------------------------------------------------------------------------
+    {
+      "type": "vless",
+      "tag": "pkpk04",
+      "server": "CF伪装地址",                        // [!]
+      "server_port": 443,
+      "uuid": "屏蔽的UUID",                         // [!]
+
+      // [+] 新增
+      "tcp_fast_open": true,
+
+      "tls": {
+        "enabled": true,
+        "server_name": "节点TLS域名",               // [!]
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/sba-vl",                           // [!]
+        "headers": {
+          "Host": "节点TLS域名"                     // [!]
+        },
+        "max_early_data": 2560,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk05: WS VLESS 裸域
+    // -------------------------------------------------------------------------
+    {
+      "type": "vless",
+      "tag": "pkpk05",
+      "server": "节点裸域名",                        // [!]
+      "server_port": 443,
+      "uuid": "屏蔽的UUID",                         // [!]
+
+      // [+] 新增
+      "tcp_fast_open": true,
+
+      "tls": {
+        "enabled": true,
+        "server_name": "节点TLS域名",               // [!]
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/sba-vl",                           // [!]
+        "headers": {
+          "Host": "节点TLS域名"                     // [!]
+        },
+        "max_early_data": 2560,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+
+    // -------------------------------------------------------------------------
+    // pkpk06: NaiveProxy (无变更)
+    // -------------------------------------------------------------------------
+    {
+      "type": "naive",
+      "tag": "pkpk06",
+      "server": "Naive服务器",                       // [!]
+      "server_port": 443,
+      "username": "屏蔽的用户名",                    // [!]
+      "password": "屏蔽的密码",                      // [!]
+      "tls": {
+        "enabled": true,
+        "server_name": "Naive域名",                  // [!]
+        "insecure": false
+      }
+    }
+  ],
+
+  // =========================================================================
+  // 路由 (核心变更区: 删除1条 + 移动1条)
+  // =========================================================================
+  "route": {
+    // [*] 原 "alidns_udp" → "alidns_doh"
+    "default_domain_resolver": "alidns_doh",
+
+    "rules": [
+      // (无变更)
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          { "port": 53 },
+          { "protocol": "dns" }
+        ],
+        "action": "hijack-dns"
+      },
+
+      // (无变更) 1.13.0新方式: sniff由路由规则控制
+      {
+        "action": "sniff"
+      },
+
+      // [-] 删除: { "network_type":"cellular","outbound":"DIRECT" }
+      //     旧版: 4G/5G下所有流量直连, proxy/ai/games规则全被跳过
+      //     新版: 删掉, 蜂窝和WiFi用同一套分流
+
+      // (无变更)
+      {
+        "domain_suffix": ["miwifi.com"],              // [!]
+        "outbound": "DIRECT"
+      },
+
+      // (无变更)
+      {
+        "clash_mode": "direct",
+        "outbound": "DIRECT"
+      },
+
+      // (无变更)
+      {
+        "clash_mode": "global",
+        "outbound": "GLOBAL"
+      },
+
+      // (无变更)
+      {
+        "ip_is_private": true,
+        "outbound": "DIRECT"
+      },
+
+      // (无变更)
+      {
+        "ip_cidr": ["198.18.0.0/15"],
+        "outbound": "PROXY"
+      },
+
+      // (无变更)
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+
+      // (无变更)
+      {
+        "domain_suffix": [
+          "steamserver.net",                          // [!]
+          "zhihu.com",                                // [!]
+          "zhimg.com",                                // [!]
+          "jd.com",                                   // [!]
+          "360buyimg.com",                            // [!]
+          "xfyun.cn"                                  // [!]
+        ],
+        "outbound": "DIRECT"
+      },
+
+      // (无变更)
+      {
+        "rule_set": [
+          "geosite-google",
+          "telegramip",
+          "proxy",
+          "games",
+          "ai"
+        ],
+        "outbound": "PROXY"
+      },
+
+      // [*] 移动: resolve 从 cnip规则之后 → 移到 cnip规则之前
+      //     旧版: cnip在resolve前 → 域名未解析成IP → cnip永远无效
+      //     新版: 先resolve解析域名→IP → 再cnip匹配 → 中国IP直连生效
+      {
+        "action": "resolve"
+      },
+
+      // (无变更, 但cnip现在能匹配了!)
+      {
+        "rule_set": [
+          "private",
+          "cn",
+          "cnip",
+          "microsoft-cn",
+          "apple-cn",
+          "google-cn",
+          "games-cn",
+          "networktest"
+        ],
+        "outbound": "DIRECT"
+      },
+
+      // (无变更)
+      {
+        "package_name": [
+          "com.google.android.youtube",               // [!]
+          "app.revanced.android.youtube",             // [!]
+          "org.telegram.messenger",                   // [!]
+          "org.telegram.messenger.beta"               // [!]
+        ],
+        "outbound": "PROXY"
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // 规则集 [*] download_detour: "PROXY" → "DIRECT"
+    // -------------------------------------------------------------------------
+    "rule_set": [
+      {
+        "tag": "geosite-category-ads-all",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-category-ads-all.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "geosite_adguard",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblocksingbox.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "geosite-google",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-google.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "proxy",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/proxy.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "games",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "ai",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/ai.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "private",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/private.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cn.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "microsoft-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/microsoft-cn.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "apple-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/apple-cn.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "google-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/google-cn.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "games-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games-cn.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "networktest",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/networktest.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "telegramip",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/telegramip.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      },
+      {
+        "tag": "cnip",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cnip.srs",
+        "download_detour": "DIRECT",                  // [*] 原 PROXY
+        "update_interval": "48h"
+      }
+    ],
+
+    "final": "PROXY",
+    "auto_detect_interface": true
+
+    // [-] 删除: "sniff_override_destination":true  (1.13.x不存在于route顶层)
+    // [-] 删除: "sniff_timeout":"300ms"            (1.13.x不存在于route顶层)
+  },
+
+  // =========================================================================
+  // 实验性功能
+  // =========================================================================
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "ui",
+      "external_ui_download_url": "https://cdn.jsdelivr.net/gh/MetaCubeX/metacubexd@gh-pages/metacubexd.zip",
+      "external_ui_download_detour": "PROXY",
+      "secret": "屏蔽的Secret",                       // [!]
+      "default_mode": "rule"
+    },
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db",
+      "cache_id": "屏蔽的ID",                         // [!]
+      "store_fakeip": true,
+
+      // [+] 新增: 缓存DNS拒绝结果(广告域名), 重启后广告拦截即时生效
+      "store_rdrc": true,
+
+      // [+] 新增: 7天过期
+      "rdrc_timeout": "7d"
+    }
+  }
+}
+
+
+// ============================================================================
+// 变更总结
+// ============================================================================
+
+// [+] 新增 (6项):
+//   dns.servers:       alidns_doh + alidns_quic + dnspod_doh + dnspod_quic + cfdns_doh
+//   dns.rules:         蜂窝→dnspod_quic / WiFi→alidns_doh 分流
+//   dns.client_subnet: 告知CDN用户网段
+//   inbound.tun:       udp_timeout:30s (省电)
+//   outbound.pkpk01~05: tcp_fast_open:true (重连加速)
+//   cache_file:        store_rdrc + rdrc_timeout (广告缓存)
+
+// [-] 删除 (3项):
+//   route.rules:       cellular→DIRECT (4G全局直连, 导致代理失效)
+//   inbound.tun:       sniff_timeout / sniff_override_destination (1.13.0已废弃)
+//   route顶层:          sniff_override_destination / sniff_timeout (不存在)
+
+// [*] 修改 (6项):
+//   log.level:           trace → info
+//   dns.cache_capacity:  8000 → 65536
+//   dns.servers:         DoH URL完整格式 → 纯主机名 + domain_resolver
+//   dns.rules[节点]:     占位符 → 真实后缀全覆盖
+//   route.rules:         resolve 移到 cnip 之前
+//   route.rule_set:      download_detour PROXY → DIRECT
+//   outbound.pkpk01:     max_connections→max_streams, 去enabled, 加padding
+
+// ============================================================================
+// 启动错误 & 修复
+// ============================================================================
+
+// 错误1: "missing domain resolver for domain server address"
+//   → DNS域名型加 domain_resolver:"alidns_quic"
+
+// 错误2: "parse 'https://https:%2F%2F...': invalid port"
+//   → type:"https" 的 server 去掉 https:// 前缀和 /dns-query
+
+// 错误3: "legacy inbound fields deprecated in 1.11.0, removed in 1.13.0"
+//   → TUN入站删 sniff_timeout / sniff_override_destination
+
+// 错误4: "json: unknown field" (route顶层 sniff_override_destination)
+//   → 该字段在1.13.x不存在于route顶层, 删除
+
+// 错误5: "http2: client connection force closed"
+//   → 规则集 download_detour 改 DIRECT(jsdelivr国内CDN直连)
+
+// 错误6: pkpk01新配置不通
+//   → multiplex 去掉 enabled:true(reality不兼容h2mux)
+
+// ============================================================================
+// 关键规则速查
+// ============================================================================
+
+// DNS:
+//   type:"https" → server 只填主机名(不带协议和路径)
+//   域名型DNS  → 必须加 domain_resolver 链
+
+// 路由:
+//   resolve  → 放在IP规则集(cnip)之前(先解析域名→IP再匹配)
+//   sniff   → 1.13.0只用 route.rules action:"sniff", 不在入站
+
+// 节点:
+//   reality VLESS → multiplex 不加 enabled(不兼容h2mux)
+//   WS VLESS     → multiplex enabled:true 正常
