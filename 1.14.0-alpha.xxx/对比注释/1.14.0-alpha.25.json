@@ -1,0 +1,1130 @@
+// 整个文件是一个 sing-box 代理客户端的完整配置文件，JSON格式
+{
+  // ==================== 日志配置 ====================
+  "log": {
+    "level": "trace",        // 日志级别：trace(最详细)/debug/info/warn/error，trace会记录所有请求细节
+    "timestamp": true        // 每条日志是否添加时间戳
+  },
+  
+  // ==================== DNS 配置 ====================
+  "dns": {
+    // DNS服务器列表，按顺序匹配规则使用
+    "servers": [
+      // 第1个DNS服务器：本地DNS，用于解析内网域名
+      {
+        "type": "local",                  // 类型：本地系统DNS
+        "tag": "local",                   // 唯一标识，供其他规则引用
+        "neighbor_domain": [              // 邻居域名：这些后缀的域名使用本服务器
+          ".local",                       // 常见内网域名后缀
+          ".lan"                          // LAN内网域名后缀
+        ]
+      },
+      
+      // 第2个DNS服务器：hosts文件风格的静态解析
+      {
+        "type": "hosts",                  // 类型：静态hosts映射
+        "tag": "hosts_fix",               // 标识标签
+        "predefined": {                   // 预定义的域名到IP的映射
+          "dns.huaweicloud.com": [        // 华为云DNS域名
+            "180.163.150.33",             // IPv4地址1
+            "180.163.151.33"              // IPv4地址2
+          ],
+          "dns.alidns.com": [             // 阿里DNS域名
+            "223.5.5.5",                  // 阿里公共DNS主
+            "223.6.6.6"                   // 阿里公共DNS备
+          ],
+          "dns.adguard.com": [            // AdGuard DNS域名
+            "94.140.14.15",               // AdGuard默认DNS
+            "94.140.15.16"                // AdGuard备用DNS
+          ],
+          "doh.pub": [                    // DNSPod DoH服务域名
+            "1.12.12.21",                 // DNSPod IPv4
+            "120.53.53.53"                // DNSPod备用
+          ],
+          "dns.google": [                 // Google DNS域名
+            "8.8.8.8",                    // Google主DNS
+            "8.8.4.4"                     // Google备DNS
+          ],
+          "cloudflare-dns.com": [         // Cloudflare DNS域名
+            "104.16.248.249",             // Cloudflare IPv4
+            "104.16.249.249"              // Cloudflare IPv4备
+          ],
+          "mtalk.google.com": [           // Google推送服务域名
+            "142.250.107.188",            // Google服务器IP
+            "142.251.170.188",            
+            "108.177.125.188"
+          ],
+          "alt1-mtalk.google.com": "74.125.200.188",  // 单IP可以直接写字符串
+          "dl.google.com": "180.163.151.161",         // Google下载域名
+          "dl.l.google.com": "180.163.150.33"
+        }
+      },
+      
+      // 第3个DNS服务器：阿里云QUIC协议DNS（快速UDP互联网连接）
+      {
+        "type": "quic",                   // QUIC协议，基于UDP的加密传输
+        "tag": "alidns-quic",             // 标识
+        "detour": "DIRECT",               // 通过"DIRECT"出站连接（不代理）
+        "domain_resolver": "hosts_fix",   // 使用hosts_fix解析服务器域名
+        "server": "dns.alidns.com"        // 阿里DNS服务器地址
+      },
+      
+      // 第4个DNS服务器：普通UDP DNS
+      {
+        "type": "udp",                    // 标准UDP DNS协议
+        "tag": "dnspub-udp",             // 标识
+        "detour": "DIRECT",               // 直连
+        "server": "119.29.29.29",         // DNSPod公共DNS服务器
+        "server_port": 53                 // DNS默认端口
+      },
+      
+      // 第5个DNS服务器：腾讯DoH（DNS over HTTPS）
+      {
+        "type": "https",                  // HTTPS加密DNS
+        "tag": "tx-doh",                 // 腾讯DoH标识
+        "detour": "DIRECT",              // 直连
+        "domain_resolver": "hosts_fix",  // 先用hosts解析服务器域名
+        "server": "doh.pub"              // 腾讯DoH服务地址
+      },
+      
+      // 第6个DNS服务器：阿里DoH
+      {
+        "type": "https",
+        "tag": "ali-doh",
+        "detour": "DIRECT",
+        "domain_resolver": "hosts_fix",
+        "server": "dns.alidns.com"
+      },
+      
+      // 第7个DNS服务器：Google DoH（走代理）
+      {
+        "type": "https",
+        "tag": "ggdns",
+        "detour": "PROXY",               // 关键：通过PROXY代理访问（用于翻墙）
+        "domain_resolver": "hosts_fix",
+        "server": "dns.google"
+      },
+      
+      // 第8个DNS服务器：Cloudflare DoT（DNS over TLS）
+      {
+        "type": "tls",                   // TLS加密DNS
+        "tag": "cf-dot",
+        "detour": "PROXY",               // 走代理
+        "domain_resolver": "hosts_fix",
+        "server": "cloudflare-dns.com",
+        "server_port": 853               // DoT标准端口
+      },
+      
+      // 第9个DNS服务器：Quad9 DoH
+      {
+        "type": "https",
+        "tag": "quad9-doh",
+        "detour": "PROXY",
+        "domain_resolver": "hosts_fix",
+        "server": "dns.quad9.net"        // 安全DNS服务，屏蔽恶意域名
+      },
+      
+      // 第10个DNS服务器：Cloudflare ECH DoH（加密客户端问候）
+      {
+        "type": "https",
+        "tag": "doh-ech",
+        "detour": "PROXY",
+        "domain_resolver": "hosts_fix",
+        "server": "dns.cloudflare.com"    // Cloudflare主DoH
+      },
+      
+      // 第11个DNS服务器：AdGuard UDP DNS
+      {
+        "type": "udp",
+        "tag": "adguard-dns",
+        "detour": "PROXY",                // 走代理
+        "domain_resolver": "hosts_fix",
+        "server": "107.172.252.185",      // AdGuard非标准DNS服务器
+        "server_port": 53
+      },
+      
+      // 第12个DNS服务器：fakeip（虚假IP）服务器
+      {
+        "type": "fakeip",                 // 返回假的IP地址，用于后续代理
+        "tag": "fakeip",
+        "inet4_range": "198.18.0.0/15",   // IPv4假IP范围（保留地址）
+        "inet6_range": "fc00::/18"        // IPv6唯一本地地址范围
+      }
+    ],
+    
+    // DNS路由规则：根据域名/查询类型决定使用哪个DNS服务器
+    "rules": [
+      // 规则1：中国域名走腾讯DoH
+      {
+        "rule_set": "cn",                // 引用CN规则集（中国域名列表）
+        "server": "tx-doh"               // 使用腾讯DoH解析
+      },
+      
+      // 规则2：私有域名走DNSPub UDP
+      {
+        "rule_set": "private",           // 私有域名（如内网）
+        "server": "dnspub-udp"
+      },
+      
+      // 规则3：.cn/.com.cn后缀走阿里DoH
+      {
+        "domain_suffix": [               // 域名后缀匹配
+          ".cn",
+          ".com.cn"
+        ],
+        "server": "ali-doh"
+      },
+      
+      // 规则4：Steam游戏缓存域名走本地DNS
+      {
+        "domain_suffix": "lancache.steamcontent.com",  // 局域网缓存
+        "server": "local"
+      },
+      
+      // 规则5：常见内网域名走本地DNS
+      {
+        "domain_suffix": [
+          "local", "lan", "home", "internal", "corp", "example.com"
+        ],
+        "server": "local"
+      },
+      
+      // 规则6：网络连通性测试域名走本地DNS
+      {
+        "domain_suffix": [
+          "msftncsi.com",                // Microsoft NCSI检测
+          "msftconnecttest.com"          // Microsoft连接测试
+        ],
+        "server": "local"
+      },
+      
+      // 规则7：游戏平台域名返回fakeip（用于代理）
+      {
+        "query_type": [                  // 只匹配A(IPv4)和AAAA(IPv6)记录
+          "A",
+          "AAAA"
+        ],
+        "domain_suffix": [
+          "steamcontent.com", "steamserver.net", "epicgames.com",
+          "gog.com", "battle.net", "blizzard.com", "origin.com",
+          "ea.com", "ubisoft.com", "rockstargames.com",
+          "play.google.com", "ggpht.com", "googleusercontent.com",
+          "android.com", "app-measurement.com",
+          "firebaselogging.googleapis.com", "firebaselogging-pa.googleapis.com"
+        ],
+        "server": "fakeip"               // 返回假IP，让后续路由规则代理这些请求
+      },
+      
+      // 规则8：主流国际网站返回fakeip
+      {
+        "query_type": ["A", "AAAA"],
+        "domain_suffix": [
+          "google.com", "google.com.hk", "googleapis.com", "gstatic.com",
+          "ggpht.com", "youtube.com", "ytimg.com", "googlevideo.com",
+          "twitter.com", "twimg.com", "facebook.com", "fbcdn.net",
+          "instagram.com", "cdninstagram.com"
+        ],
+        "server": "fakeip"
+      },
+      
+      // 规则9：多个规则集内的域名返回fakeip
+      {
+        "query_type": ["A", "AAAA"],
+        "rule_set": [                    // 引用多个预定义规则集
+          "telegram",                    // Telegram域名
+          "geosite-youtube",             // YouTube域名
+          "instagram",                   // Instagram域名
+          "Proxy",                       // 代理域名集合
+          "gfw",                         // 防火墙域名列表
+          "ai",                          // AI服务域名
+          "games",                       // 游戏域名
+          "GlobalMedia"                  // 全球媒体域名
+        ],
+        "server": "fakeip"
+      },
+      
+      // 规则10：广告域名走阿里DoH（获取真实IP以便屏蔽）
+      {
+        "rule_set": [
+          "geosite_adguard",             // AdGuard广告列表
+          "geosite-category-ads-all"     // 全量广告类别
+        ],
+        "server": "ali-doh"
+      },
+      
+      // 规则11：Google相关域名走Quad9 DoH
+      {
+        "rule_set": [
+          "geosite-google",              // Google域名集合
+          "geosite-youtube"              // YouTube域名集合
+        ],
+        "server": "quad9-doh"
+      },
+      
+      // 规则12：全球媒体域名走Cloudflare DoT
+      {
+        "rule_set": "GlobalMedia",
+        "server": "cf-dot"
+      },
+      
+      // 规则13：拒绝其他所有A/AAAA查询（保底规则，防止泄露）
+      {
+        "query_type": ["A", "AAAA"],
+        "invert": true,                  // 反转：不匹配上面所有规则的查询
+        "action": "reject"               // 直接拒绝，不进行DNS查询
+      },
+      
+      // 规则14：代理/游戏/AI域名的A/AAAA记录再次确认用fakeip
+      {
+        "query_type": ["A", "AAAA"],
+        "rule_set": [
+          "proxy",
+          "games",
+          "ai"
+        ],
+        "server": "fakeip",
+        "rewrite_ttl": 300               // 重写TTL为300秒
+      },
+      
+      // 规则15：预定义阻断列表，直接返回空响应（不产生错误）
+      {
+        "rule_set": [
+          "httpDNS",                     // HTTP DNS请求拦截
+          "DNSreject",                   // 需拒绝的DNS查询
+          "Ads"                          // 广告域名
+        ],
+        "action": "predefined",          // 预定义动作
+        "rcode": "NOERROR"               // 返回成功但无结果，模拟正常DNS
+      },
+      
+      // 规则16：私有/过滤器走阿里QUIC DNS
+      {
+        "rule_set": [
+          "private",
+          "Filter"
+        ],
+        "server": "alidns-quic"
+      },
+      
+      // 规则17：特定域名走ECH DoH（增强隐私）
+      {
+        "domain_suffix": "fff.372164885.xyz",
+        "server": "doh-ech"
+      },
+      
+      // 规则18：Google广告域名直接拒绝
+      {
+        "domain": [
+          "*.doubleclick.net",           // DoubleClick广告
+          "*.googlesyndication.com",     // Google广告
+          "*.googleadservices.com",      // Google广告服务
+          "*.adservice.google.com",      // Google广告服务
+          "*.addthis.com",               // 分享/广告服务
+          "*.adnxs.com",                 // AppNexus广告
+          "*.adsrvr.org",                // Adsrvr广告
+          "*.casalemedia.com",           // Casale广告
+          "*.rubiconproject.com",        // Rubicon广告
+          "*.openx.net"                  // OpenX广告
+        ],
+        "action": "reject"
+      },
+      
+      // 规则19：正则匹配广告域名特征并拒绝
+      {
+        "domain_regex": "^(ad|ads|advert|banner|sponsor|popup|tracker|analytics)\\.|doubleclick\\.|googleadservices\\.|googlesyndication\\.",
+        "action": "reject"
+      },
+      
+      // 规则20：广告规则集拒绝
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+      
+      // 规则21：拒绝非常规DNS查询类型（SVCB/HTTPS服务绑定/PTR反向）
+      {
+        "query_type": [
+          "SVCB",        // 服务绑定，用于HTTPS等
+          "HTTPS",       // HTTPS服务参数
+          "PTR"          // 反向DNS查询
+        ],
+        "action": "reject"
+      },
+      
+      // 规则22：Google信标/追踪域名拒绝
+      {
+        "domain_suffix": [
+          "beacons.gvt2.com",
+          "beacons2.gvt2.com",
+          "beacons3.gvt2.com"
+        ],
+        "action": "reject"
+      }
+    ],
+    
+    "final": "adguard-dns",           // 默认DNS服务器（未匹配规则时使用）
+    "reverse_mapping": true,          // 启用反向映射（IP到域名，用于日志）
+    "strategy": "prefer_ipv4",        // 策略：优先返回IPv4地址
+    "timeout": "3s",                  // DNS查询超时时间
+    "cache_capacity": 256000,         // DNS缓存条目数（256k条）
+    
+    // 乐观DNS缓存：TTL过期后仍返回旧值，同时后台刷新
+    "optimistic": {
+      "enabled": true,
+      "timeout": "1h0m0s"             // 乐观缓存有效期
+    },
+    
+    "client_subnet": "114.114.114.114" // EDNS客户端子网（向DNS服务器传递客户端IP）
+  },
+  
+  // ==================== NTP时间同步配置 ====================
+  "ntp": {
+    "enabled": true,                  // 启用NTP时间同步
+    "interval": "30m0s",             // 每30分钟同步一次
+    "server": "ntp.aliyun.com",       // 阿里云NTP服务器
+    "server_port": 123,               // NTP标准端口
+    "detour": "DIRECT"                // 直连（时间同步不走代理）
+  },
+  
+  // ==================== HTTP客户端配置 ====================
+  "http_clients": [
+    {
+      "tag": "default",               // 客户端标识
+      "version": 2,                   // HTTP/2
+      "detour": "DIRECT",             // 直连
+      "stream_receive_window": 0,     // 流接收窗口（0表示默认）
+      "connection_receive_window": 0  // 连接接收窗口
+    }
+  ],
+  
+  // ==================== 入站配置 ====================
+  "inbounds": [
+    {
+      "type": "tun",                  // TUN虚拟网卡模式
+      "tag": "tun-in",
+      "mtu": 1500,                    // 最大传输单元
+      "address": "10.8.0.1/24",       // 虚拟网卡IP地址
+      "dns_mode": "hijack",           // DNS劫持模式（拦截所有DNS请求）
+      "dns_address": "10.8.0.2",      // DNS服务器地址
+      "auto_route": true,             // 自动路由所有流量到TUN
+      "strict_route": true,           // 严格路由（阻止非TUN流量泄漏）
+      "stack": "system"               // 使用系统网络栈
+    },
+    {
+      "type": "mixed",                // 混合协议（HTTP/SOCKS）
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",          // 只监听本地
+      "listen_port": 7890             // 混合代理端口
+    },
+    {
+      "type": "http",                 // HTTP代理
+      "tag": "http-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7891
+    },
+    {
+      "type": "socks",                // SOCKS5代理
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7892
+    },
+    {
+      "type": "redirect",             // 透明重定向
+      "tag": "redirect-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7893
+    }
+  ],
+  
+  // ==================== 出站配置 ====================
+  "outbounds": [
+    {
+      "type": "direct",               // 直连出站
+      "tag": "DIRECT",
+      "domain_resolver": "alidns-quic" // 使用阿里QUIC DNS
+    },
+    
+    // 选择器：手动或自动选择节点
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [                  // 可选节点列表
+        "🟢 自动-测速",                // 自动测速组（延迟优先）
+        "🔵 自动-稳定",                // 自动测速组（稳定优先）
+        "pkpk01", "pkpk02", "pkpk03", "pkpk04", "pkpk05",
+        "pkg01", "pkg02", "pkg03", "pkg04", "pkg05",
+        "pkg06", "pkg07", "pkg08", "pkg09", "pkg10",
+        "pkg11", "pkg12", "pkg13", "pkg14",
+        "DIRECT"                      // 也可以选择直连
+      ],
+      "default": "🟢 自动-测速"        // 默认选择测速组
+    },
+    
+    // 测速选择器（延迟优先）：定期测试各节点延迟，选最快的
+    {
+      "type": "urltest",
+      "tag": "🟢 自动-测速",
+      "outbounds": [                  // 测试这些节点
+        "pkpk01", "pkpk02", "pkpk03", "pkpk04", "pkpk05",
+        "pkg01", "pkg02", "pkg03", "pkg04", "pkg05",
+        "pkg06", "pkg07", "pkg08", "pkg09", "pkg10",
+        "pkg11", "pkg12", "pkg13", "pkg14"
+      ],
+      "url": "http://www.gstatic.com/generate_204",  // 测试连通性URL
+      "interval": "10m0s",            // 每10分钟测试一次
+      "tolerance": 100,               // 容忍延迟差异100ms（测速时忽略小差异）
+      "idle_timeout": "30m0s"         // 空闲30分钟后停止测试
+    },
+    
+    // 测速选择器（稳定优先）：tolerance更小，延迟变化敏感度低
+    {
+      "type": "urltest",
+      "tag": "🔵 自动-稳定",
+      "outbounds": [
+        "pkpk01", "pkpk02", "pkpk03", "pkpk04", "pkpk05",
+        "pkg01", "pkg02", "pkg03", "pkg04", "pkg05",
+        "pkg06", "pkg07", "pkg08", "pkg09", "pkg10",
+        "pkg11", "pkg12", "pkg13", "pkg14"
+      ],
+      "url": "http://www.gstatic.com/generate_204",
+      "interval": "15m0s",            // 测试间隔更长（15分钟）
+      "tolerance": 30,                // 容忍度更小（30ms），避免频繁切换
+      "idle_timeout": "1h0m0s"        // 空闲1小时后停止
+    },
+    
+    // GLOBAL选择器：决定全局默认走代理还是直连
+    {
+      "type": "selector",
+      "tag": "GLOBAL",
+      "outbounds": [
+        "PROXY",
+        "DIRECT"
+      ],
+      "default": "PROXY"              // 默认走代理
+    },
+    
+    // CN选择器：中国域名策略
+    {
+      "type": "selector",
+      "tag": "CN",
+      "outbounds": [
+        "DIRECT",                     // 国内直连
+        "PROXY"                       // 也可走代理
+      ],
+      "default": "DIRECT"
+    },
+    
+    // Final选择器：最终未匹配规则流量的去向
+    {
+      "type": "selector",
+      "tag": "Final",
+      "outbounds": [
+        "PROXY",                      // 走代理
+        "DIRECT",                     // 直连
+        "REJECT-DROP"                 // 拒绝并丢弃
+      ],
+      "default": "PROXY"
+    },
+    
+    {
+      "type": "block",                // 阻止出站
+      "tag": "REJECT-DROP"
+    },
+    
+    // ==================== 节点配置示例（已脱敏） ====================
+    // 节点1：VLESS + REALITY 协议
+    {
+      "type": "vless",
+      "tag": "pkpk01",
+      "connect_timeout": "5s",        // 连接超时5秒
+      "tcp_fast_open": true,          // 启用TCP快速打开
+      "tcp_keep_alive": "30s",        // TCP保活
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,           // UDP分片
+      "domain_resolver": "alidns-quic",
+      "server": "节点域名",            // 实际配置需填写真实域名/IP
+      "server_port": 端口,             // 实际配置需填写端口号
+      "uuid": "uuid",                 // VLESS用户ID
+      "flow": "xtls-rprx-vision",     // 流控：XTLS Vision
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",  // TLS SNI伪装
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"            // 模拟Chrome TLS指纹
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"                // REALITY公钥
+        }
+      },
+      "packet_encoding": "xudp"       // XUDP编码
+    },
+    
+    // 节点2：Hysteria2 协议（基于QUIC的暴力代理）
+    {
+      "type": "hysteria2",
+      "tag": "pkpk02",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "domain_resolver": "alidns-quic",
+      "server": "节点域名",
+      "server_port": 端口,
+      "server_ports": "跳跃端口",       // 端口跳跃范围
+      "hop_interval": "30s",           // 端口跳跃间隔
+      "hop_interval_max": "1m0s",
+      "up_mbps": 上传,                  // 上传带宽限制(Mbps)
+      "down_mbps": 下载,                // 下载带宽限制
+      "password": "uuid",              // 认证密码
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "alpn": "h3",                  // ALPN: HTTP/3
+        "certificate_public_key_sha256": "密钥"  // 证书公钥SHA256
+      },
+      "stream_receive_window": 0,
+      "connection_receive_window": 0
+    },
+    
+    // 节点3：VLESS + REALITY + gRPC传输
+    {
+      "type": "vless",
+      "tag": "pkpk03",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "domain_resolver": "alidns-quic",
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "transport": {
+        "type": "grpc",                // gRPC传输协议
+        "service_name": "grpc"
+      },
+      "packet_encoding": "xudp"
+    },
+    
+    // 节点4：Trojan 协议
+    {
+      "type": "trojan",
+      "tag": "pkpk04",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "domain_resolver": "alidns-quic",
+      "server": "节点域名",
+      "server_port": 端口,
+      "password": "uuid",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate_public_key_sha256": "密钥"
+      }
+    },
+    
+    // 节点5：Shadowsocks 2022-blake3 加密
+    {
+      "type": "shadowsocks",
+      "tag": "pkpk05",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "domain_resolver": "alidns-quic",
+      "server": "节点域名",
+      "server_port": 30010,
+      "method": "2022-blake3-aes-128-gcm",  // 现代SS加密方法
+      "password": "密码"
+    },
+    
+    // ====== 更多节点省略，结构与上述类似 ======
+    // pkg01~pkg14 包含 VLESS/Reality、Hysteria2、TUIC、Shadowsocks、ShadowTLS、Trojan、VMess+WS、VLESS+WS、AnyTLS、Naive 等
+    
+    // 说明：pkg08/pkg09 使用了 Cloudflare CDN 优选 IP，通过 WebSocket + TLS 中转
+    // 说明：pkg13/pkg14 使用 Naive 协议（Chrome 的 Caddy 正向代理）
+    
+    // 疑惑点1：pkg02 的 realm 字段配置奇怪，realm 是 Hysteria2 的认证域，这里配置了 STUN 服务器列表用于 NAT 穿透检测
+    // 疑惑点2：pkg13 的 certificate 字段是空证书，应该配置实际证书内容才能工作
+    
+    // 回答：该配置覆盖了几乎所有主流代理协议，适用于不同网络环境和封锁策略
+  ],
+  
+  // ==================== 路由配置 ====================
+  "route": {
+    "rules": [
+      // 规则1：流量嗅探（识别协议类型）
+      {
+        "action": "sniff"
+      },
+      
+      // 规则2：DNS流量劫持
+      {
+        "type": "logical",
+        "mode": "or",                   // 逻辑或：满足任一条件
+        "rules": [
+          {
+            "port": 53                  // 目标端口53
+          },
+          {
+            "protocol": "dns"           // 协议为DNS
+          }
+        ],
+        "action": "hijack-dns"          // 劫持DNS请求到TUN
+      },
+      
+      // 规则3：拒绝无效IPv6（有IPv6地址但没有全局IPv6连通性）
+      {
+        "type": "logical",
+        "mode": "and",                  // 逻辑与：两个条件都满足
+        "rules": [
+          {
+            "ip_version": 6             // IPv6流量
+          },
+          {
+            "default_interface_address": "2000::/3",  // 全局IPv6地址范围
+            "invert": true              // 反转：没有全局IPv6地址
+          }
+        ],
+        "action": "reject"              // 拒绝
+      },
+      
+      // 规则4：B站相关域名直连
+      {
+        "domain_suffix": [
+          "api.bilibili.com",
+          "www.bilibili.com",
+          "bilivideo.com",              // B站视频CDN
+          "hdslb.com",                  // B站静态资源
+          "bilicdn1.com",
+          "bilicdn.com"
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则5：国内短视频平台直连
+      {
+        "domain_suffix": [
+          "xiaohongshu.com",            // 小红书
+          "xhscdn.com",
+          "kuaishou.com",               // 快手
+          "ixigua.com"                  // 西瓜视频
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则6：NTP和ICMP协议直连
+      {
+        "protocol": [
+          "ntp",                        // 时间同步
+          "icmp"                        // ICMP(ping)
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则7：特定赞助/统计域名直连
+      {
+        "domain_suffix": [
+          "sponsor.ajay.app",           // SponsorBlock
+          "ifbapp.com",
+          "allawnos.com",
+          "heytapmobi.com",             // OPPO相关
+          "steamserver.net"
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则8：国内域名/IP集合直连
+      {
+        "rule_set": [
+          "private",                    // 私有地址
+          "cn",                         // 中国域名
+          "cnip",                       // 中国IP
+          "microsoft-cn",               // 微软中国
+          "apple-cn",                   // 苹果中国
+          "google-cn",                  // 谷歌中国
+          "games-cn",                   // 游戏中国
+          "networktest"                 // 网络测试
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则9：国内大厂域名直连
+      {
+        "domain_suffix": [
+          "alipay.com", "alicdn.com", "aliyuncs.com",  // 阿里
+          "qcloud.com", "cloud.tencent.com",           // 腾讯
+          "mi.com", "xiaomi.com",                      // 小米
+          "huawei.com", "vivo.com.cn", "oppo.com",     // 华为/OPPO/vivo
+          "coolapk.com",                               // 酷安
+          "wps.cn",                                    // WPS
+          "biliapi.com"                                // B站API
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      // 规则10：特定安卓应用包名直连（通过VPN检测到的应用）
+      {
+        "package_name": [
+          "com.tencent.mm",              // 微信
+          "com.eg.android.AlipayGphone", // 支付宝
+          "com.netease.cloudmusic"       // 网易云音乐
+        ],
+        "outbound": "DIRECT"
+      },
+      
+      {
+        "package_name": "com.wwwscn.yuexingbao",
+        "outbound": "DIRECT"
+      },
+      
+      // 规则11：Clash模式控制（兼容Clash API）
+      {
+        "clash_mode": "Direct",
+        "outbound": "DIRECT"
+      },
+      
+      // 规则12：苹果服务直连
+      {
+        "rule_set": "Apple",
+        "outbound": "DIRECT"
+      },
+      
+      // 规则13：Google FCM推送走代理
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "domain_suffix": [
+              "mtalk.google.com",        // Google推送服务
+              "alt1-mtalk.google.com",
+              "alt2-mtalk.google.com",
+              "alt3-mtalk.google.com",
+              "alt4-mtalk.google.com",
+              "alt5-mtalk.google.com",
+              "alt6-mtalk.google.com",
+              "alt7-mtalk.google.com",
+              "alt8-mtalk.google.com"
+            ]
+          },
+          {
+            "port": [
+              443,                      // HTTPS端口
+              5228                      // Google FCM端口
+            ]
+          }
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则14：FCM和Android服务走代理
+      {
+        "rule_set": [
+          "fcm",
+          "Android"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则15：Google中国特供域名也走代理
+      {
+        "domain_suffix": [
+          "google.cn",
+          "googleapis.cn"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则16：国际主流服务域名走代理
+      {
+        "domain_suffix": [
+          "netflix", "spotify", "github", "steam", "discord",
+          "reddit", "tiktok", "twitter", "facebook", "amazon",
+          "microsoft", "apple", "paypal"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则17：规则集走代理
+      {
+        "rule_set": [
+          "telegram", "telegram_ip", "geosite-youtube",
+          "instagram", "Google", "ai", "GlobalMedia", "Proxy", "gfw"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则18：Clash Global模式走代理
+      {
+        "clash_mode": "Global",
+        "outbound": "PROXY"
+      },
+      
+      // 规则19：重复规则（冗余，可能是为了覆盖）
+      {
+        "rule_set": [
+          "geosite-youtube",
+          "geosite-google",
+          "telegram"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则20：更多代理规则集
+      {
+        "rule_set": [
+          "telegramip",
+          "geosite-google",
+          "proxy",
+          "games",
+          "ai"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则21：重复代理规则集
+      {
+        "rule_set": [
+          "geosite-google",
+          "geosite-youtube",
+          "instagram",
+          "telegram",
+          "GlobalMedia",
+          "gfw",
+          "Proxy"
+        ],
+        "outbound": "PROXY"
+      },
+      
+      // 规则22：应用包名正则匹配代理
+      {
+        "package_name_regex": "^(com\\.google\\.android\\.(youtube|apps\\.(maps|docs|drive))|app\\.revanced\\.android\\.youtube|org\\.telegram\\.messenger(\\..*)?)$",
+        "outbound": "PROXY"
+      },
+      
+      // 规则23：私有IP直连
+      {
+        "ip_is_private": true,
+        "outbound": "DIRECT"
+      },
+      
+      // 规则24：假IP范围（fakeip）走代理
+      {
+        "ip_cidr": "198.18.0.0/15",
+        "outbound": "PROXY"
+      },
+      
+      // 规则25：路由选项配置
+      {
+        "action": "route-options",
+        "udp_disable_domain_unmapping": true,  // 禁用UDP域名反向映射
+        "udp_connect": true                    // UDP连接模式
+      },
+      
+      // 规则26：广告/恶意域名拒绝并丢弃
+      {
+        "rule_set": [
+          "Ads",
+          "httpDNS",
+          "DNSreject"
+        ],
+        "action": "reject",
+        "method": "drop"                 // 丢弃数据包
+      },
+      
+      // 规则27：特定信标域名拒绝
+      {
+        "domain": [
+          "beacon.qq.com",               // QQ信标
+          "abyss.cyapi.cn",
+          "ad.cyapi.cn",
+          "gather.colorfulclouds.net"    // 彩云天气数据收集
+        ],
+        "action": "reject",
+        "method": "drop"
+      },
+      
+      // 规则28：STUN/QUIC/DTLS协议拒绝（避免WebRTC泄露）
+      {
+        "protocol": [
+          "stun",                        // NAT穿透
+          "quic",                        // QUIC协议
+          "dtls"                         // DTLS协议
+        ],
+        "action": "reject"
+      },
+      
+      // 规则29：私有/保留IP段拒绝
+      {
+        "ip_cidr": [
+          "0.0.0.0/8",                  // 无效地址
+          "10.0.0.0/8",                 // 私有A类
+          "127.0.0.0/8",                // 本地回环
+          "169.254.0.0/16",             // 链路本地
+          "172.16.0.0/12",              // 私有B类
+          "192.168.0.0/16",             // 私有C类
+          "224.0.0.0/4",                // 组播
+          "240.0.0.0/4"                 // 保留
+        ],
+        "action": "reject"
+      },
+      
+      // 规则30：广告规则集拒绝
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+      
+      // 规则31：STUN服务端口/关键字拒绝
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "network": "udp",
+            "port": [
+              3478, 5349, 5350, 19302, 10000  // STUN常见端口
+            ]
+          },
+          {
+            "domain_regex": "^stun\\..+"        // stun.开头的域名
+          },
+          {
+            "domain_keyword": [                  // 包含关键字
+              "stun",
+              "turn",
+              "httpdns"
+            ]
+          },
+          {
+            "protocol": "stun"
+          }
+        ],
+        "action": "reject"
+      },
+      
+      // 规则32：反欺诈规则集拒绝
+      {
+        "rule_set": "anti_fraud",
+        "action": "reject"
+      },
+      
+      // 规则33：最终解析（默认动作）
+      {
+        "action": "resolve"
+      }
+    ],
+    
+    // ==================== 规则集配置 ====================
+    "rule_set": [
+      {
+        "type": "remote",               // 远程规则集（自动更新）
+        "tag": "geosite-category-ads-all",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-category-ads-all.srs",
+        "http_client": "default",
+        "update_interval": "48h0m0s"   // 每48小时更新
+      },
+      {
+        "type": "remote",
+        "tag": "geosite_adguard",
+        "url": "https://cdn.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblocksingbox.srs",
+        "http_client": "default",
+        "update_interval": "48h0m0s"
+      },
+      // ... 更多规则集（共30个），涵盖 Google、YouTube、代理、游戏、AI、私有域名、中国IP等
+      
+      // 疑惑点3：anti_fraud 规则集来自 raw.githubusercontent.com/hwsaya/nothing，内容未知
+      // 疑惑点4：telegram_ip 和 telegramip 两个规则集重复
+      // 回答：可能是配置冗余，不影响运行但浪费内存
+    ],
+    
+    "final": "Final",                       // 最终出站（未匹配流量）
+    "auto_detect_interface": true,          // 自动检测网络接口
+    "default_domain_resolver": "alidns-quic" // 默认域名解析器
+  },
+  
+  // ==================== 实验性功能 ====================
+  "experimental": {
+    // 缓存文件配置
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db",                  // SQLite缓存数据库
+      "cache_id": "cinchov",               // 缓存实例ID
+      "store_fakeip": true,                // 存储fakeip映射
+      "store_dns": true                    // 存储DNS缓存
+    },
+    
+    // Clash兼容API
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",  // API监听地址
+      "external_ui": "ui",                       // Web UI目录
+      "default_mode": "rule"                     // 默认规则模式
+    },
+    
+    // 调试配置
+    "debug": {
+      "gc_percent": 100,                   // Go GC触发百分比
+      "memory_limit": "400MB"              // 内存限制400MB
+    }
+  }
+}
+
+// ==================== 总体说明 ====================
+// 这是一个完整的 sing-box 代理客户端配置，主要功能：
+// 
+// 1. DNS分流：国内域名走国内DNS，国外域名返回fakeip（供后续代理）
+// 2. 广告拦截：通过DNS层面拒绝广告域名
+// 3. 多协议支持：VLESS/Reality、Hysteria2、Trojan、Shadowsocks、VMess、TUIC、Naive等
+// 4. 智能路由：国内直连+国外代理，支持Clash模式切换
+// 5. 自动节点选择：测速选最优节点
+// 6. 防泄漏：拒绝IPv6无效流量、STUN/WebRTC泄露
+// 7. 隐私保护：DNS加密(DoH/DoT/QUIC)、TLS指纹伪装
+//
+// ==================== 使用注意 ====================
+// 1. 节点配置中的"节点域名"、"端口"、"uuid"、"密码"、"密钥"需要替换为真实值
+// 2. anti_fraud 和部分规则集可能需要代理才能下载（IPv6网络更新问题）
+// 3. fakeip范围198.18.0.0/15需要在内核中正确配置
+// 4. TUN模式需要管理员/root权限创建虚拟网卡
+// 5. 初次运行会下载所有远程规则集，可能需要科学上网环境
+//
+// ==================== 改进建议 ====================
+// 1. 去重：规则9/规则17/规则19/规则20/规则21有大量重复，可合并
+// 2. 规范：pkg02的realm配置疑似错误（STUN服务器不应在realm中）
+// 3. 安全：pkg13/pkg14的TLS证书为空，应移除或配置实际证书
+// 4. 性能：DNS缓存256000条过大，可降至65536
+// 5. 简化：部分规则可以用通配符合并
+//
+// 疑惑点总结：
+// - 为什么有多个重复的rule_set引用？（可能是多次编辑遗留）
+// - fakeip为什么还要配合ali-doh？(ali-doh用于获取真实IP，fakeip用于代理)
+// - realm配置STUN列表的作用？(NAT类型检测，但放在这里不合理)
+// - 空TLS证书能否正常工作？(不能，会导致TLS握手失败)
+//
+// 回答总结：
+// 配置整体功能完备，覆盖面广，但存在冗余和配置错误，需要清理优化才能稳定运行。
