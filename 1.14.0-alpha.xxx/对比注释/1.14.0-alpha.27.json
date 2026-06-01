@@ -44,11 +44,6 @@
         "tag": "hosts_fix",        // 标签名，其他server通过 "domain_resolver": "hosts_fix" 来引用它
         "predefined": {            // 预定义的域名→IP映射表（直接写死，不走网络查询）
 
-          "dns.huaweicloud.com": [ // 华为云DNS的域名（DoH服务）
-            "180.163.150.33",      // 华为云DNS主IP
-            "180.163.151.33"       // 华为云DNS备用IP
-          ],
-
           "dns.alidns.com": [      // 阿里DNS的域名（DoH/DoQ服务）
             "223.5.5.5",           // 阿里DNS主IP（俗称"阿里公共DNS"）
             "223.6.6.6"            // 阿里DNS备用IP
