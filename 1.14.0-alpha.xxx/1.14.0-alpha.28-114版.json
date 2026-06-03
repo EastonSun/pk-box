@@ -37,15 +37,14 @@
         "tag": "114dns",
         "detour": "DIRECT",
         "server": "114.114.114.114",
-        "server_port": 53,
-        "strategy": "ipv4_only"
+        "server_port": 53
       },
       {
         "type": "https",
         "tag": "ggdns",
         "detour": "PROXY",
         "domain_resolver": "hosts_fix",
-        "server": "dns.google"
+        "server": "8.8.8.8"
       },
       {
         "type": "udp",
