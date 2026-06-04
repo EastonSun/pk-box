@@ -1,0 +1,803 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "local"
+      },
+      {
+        "type": "https",
+        "tag": "alidns_doh",
+        "domain_resolver": "alidns_quic",
+        "server": "dns.alidns.com"
+      },
+      {
+        "type": "udp",
+        "tag": "alidns_quic",
+        "server": "223.5.5.5"
+      },
+      {
+        "type": "https",
+        "tag": "ggdns_doh",
+        "detour": "PROXY",
+        "domain_resolver": "alidns_quic",
+        "server": "dns.google"
+      },
+      {
+        "type": "fakeip",
+        "tag": "fakeip",
+        "inet4_range": "198.18.0.0/15"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".local",
+          ".lan",
+          "miwifi.com",
+          "tplogin.cn",
+          "router.asus.com",
+          "tendawifi.com",
+          "tplinkwifi.net"
+        ],
+        "server": "local"
+      },
+      {
+        "domain_suffix": [
+          "app-measurement.com",
+          "hm.baidu.com",
+          "firebaselogging.googleapis.com",
+          "firebaselogging-pa.googleapis.com",
+          "beacons.gvt2.com",
+          "beacons2.gvt2.com",
+          "beacons3.gvt2.com",
+          "tracking.miui.com",
+          "market.xiaomi.com"
+        ],
+        "action": "reject"
+      },
+      {
+        "domain_suffix": "lancache.steamcontent.com",
+        "server": "alidns_doh"
+      },
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+      {
+        "query_type": [
+          "SVCB",
+          "HTTPS",
+          "PTR"
+        ],
+        "action": "reject"
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "rule_set": [
+          "proxy",
+          "games",
+          "ai"
+        ],
+        "server": "fakeip",
+        "rewrite_ttl": 300
+      },
+      {
+        "domain_suffix": [
+          "play.google.com",
+          "ggpht.com",
+          "googleusercontent.com",
+          "android.com"
+        ],
+        "server": "fakeip"
+      },
+      {
+        "clash_mode": "direct",
+        "server": "alidns_doh"
+      },
+      {
+        "clash_mode": "global",
+        "server": "fakeip"
+      }
+    ],
+    "final": "ggdns_doh",
+    "reverse_mapping": true,
+    "strategy": "ipv4_only",
+    "disable_expire": true,
+    "cache_capacity": 16384
+  },
+  "ntp": {
+    "enabled": true,
+    "interval": "30m0s",
+    "server": "ntp.aliyun.com",
+    "server_port": 123
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "mtu": 1500,
+      "address": "10.8.0.1/24",
+      "auto_route": true,
+      "strict_route": true,
+      "udp_timeout": "5m0s",
+      "stack": "mixed",
+      "endpoint_independent_nat": true
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7890
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "DIRECT"
+    },
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [
+        "AUTO",
+        "pkpk01",
+        "pkpk02",
+        "pkpk03",
+        "pkpk04",
+        "pkpk05",
+        "pkg01",
+        "pkg02",
+        "pkg03",
+        "pkg04",
+        "pkg05",
+        "pkg06",
+        "pkg07",
+        "pkg08",
+        "pkg09",
+        "DIRECT"
+      ],
+      "default": "AUTO"
+    },
+    {
+      "type": "urltest",
+      "tag": "AUTO",
+      "outbounds": [
+        "pkpk01",
+        "pkpk02",
+        "pkpk03",
+        "pkpk04",
+        "pkpk05",
+        "pkg01",
+        "pkg02",
+        "pkg03",
+        "pkg04",
+        "pkg05",
+        "pkg06",
+        "pkg07",
+        "pkg08",
+        "pkg09"
+      ],
+      "url": "http://cp.cloudflare.com/",
+      "interval": "3m0s",
+      "tolerance": 50,
+      "idle_timeout": "10m0s"
+    },
+    {
+      "type": "selector",
+      "tag": "GLOBAL",
+      "outbounds": [
+        "PROXY",
+        "DIRECT"
+      ],
+      "default": "PROXY"
+    },
+    {
+      "type": "selector",
+      "tag": "CN",
+      "outbounds": [
+        "DIRECT",
+        "PROXY"
+      ],
+      "default": "DIRECT"
+    },
+    {
+      "type": "vless",
+      "tag": "pkpk01",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "packet_encoding": "xudp"
+    },
+    {
+      "type": "hysteria2",
+      "tag": "pkpk02",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "server": "节点域名",
+      "server_port": 端口,
+      "server_ports": "跳跃端口",
+      "up_mbps": 200,
+      "down_mbps": 1000,
+      "password": "密码",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "alpn": "h3",
+        "certificate_public_key_sha256": "密钥"
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "pkpk03",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "transport": {
+        "type": "grpc",
+        "service_name": "grpc"
+      },
+      "packet_encoding": "xudp"
+    },
+    {
+      "type": "trojan",
+      "tag": "pkpk04",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "server": "节点域名,
+      "server_port": 端口,
+      "password": "密码",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate_public_key_sha256": "密钥"
+      }
+    },
+    {
+      "type": "shadowsocks",
+      "tag": "pkpk05",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "udp_fragment": true,
+      "server": "节点域名",
+      "server_port": 端口,
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "密码"
+    },
+    {
+      "type": "vless",
+      "tag": "pkg01",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "multiplex": {
+        "protocol": "h2mux",
+        "max_connections": 8,
+        "min_streams": 16,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      }
+    },
+    {
+      "type": "tuic",
+      "tag": "pkg02",
+      "connect_timeout": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "password": "密码",
+      "congestion_control": "bbr",
+      "udp_relay_mode": "native",
+      "heartbeat": "10s",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "alpn": "h3",
+        "certificate_public_key_sha256": "密钥"
+      }
+    },
+    {
+      "type": "shadowsocks",
+      "tag": "pkg03",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "server": "节点域名",
+      "server_port": 端口,
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "密码",
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_connections": 8,
+        "min_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      }
+    },
+    {
+      "type": "trojan",
+      "tag": "pkg04",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "password": "uuid,
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate_public_key_sha256": "密钥",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "multiplex": {
+        "enabled": true,
+        "protocol": "h2mux",
+        "max_connections": 8,
+        "min_streams": 16,
+        "padding": true,
+        "brutal": {
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "pkg05",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "transport": {
+        "type": "http"
+      },
+      "packet_encoding": "xudp"
+    },
+    {
+      "type": "vless",
+      "tag": "pkg06",
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "tcp_keep_alive": "30s",
+      "tcp_keep_alive_interval": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "uuid": "uuid",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "密钥"
+        }
+      },
+      "transport": {
+        "type": "grpc",
+        "service_name": "grpc"
+      }
+    },
+    {
+      "type": "anytls",
+      "tag": "pkg07",
+      "connect_timeout": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate_public_key_sha256": "密钥",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "password": "密码",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5
+    },
+    {
+      "type": "naive",
+      "tag": "pkg08",
+      "connect_timeout": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "username": "name",
+      "password": "密码",
+      "udp_over_tcp": true,
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate": [
+          "-----BEGIN CERTIFICATE-----",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "-----END CERTIFICATE-----"
+        ]
+      }
+    },
+    {
+      "type": "naive",
+      "tag": "pkg09",
+      "connect_timeout": "5s",
+      "server": "节点域名",
+      "server_port": 端口,
+      "username": "name",
+      "password": "密码",
+      "udp_over_tcp": false,
+      "quic": true,
+      "quic_congestion_control": "bbr",
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "certificate": [
+          "-----BEGIN CERTIFICATE-----",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "-----END CERTIFICATE-----"
+        ]
+      }
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": 53
+          },
+          {
+            "protocol": "dns"
+          }
+        ],
+        "action": "hijack-dns"
+      },
+      {
+        "action": "sniff"
+      },
+      {
+        "domain_suffix": "miwifi.com",
+        "outbound": "CN"
+      },
+      {
+        "clash_mode": "direct",
+        "outbound": "DIRECT"
+      },
+      {
+        "clash_mode": "global",
+        "outbound": "GLOBAL"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "DIRECT"
+      },
+      {
+        "ip_cidr": "198.18.0.0/15",
+        "outbound": "PROXY"
+      },
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all"
+        ],
+        "action": "reject"
+      },
+      {
+        "domain_suffix": [
+          "steamserver.net",
+          "zhihu.com",
+          "zhimg.com",
+          "jd.com",
+          "360buyimg.com",
+          "xfyun.cn"
+        ],
+        "outbound": "CN"
+      },
+      {
+        "domain_keyword": [
+          "bilibili",
+          "bilivideo",
+          "hdslb",
+          "iqiyi",
+          "qiyi",
+          "youku",
+          "xunlei",
+          "alipay",
+          "taobao",
+          "alicdn",
+          "weixin",
+          "wechat",
+          "qq.com",
+          "tencent",
+          "baidu",
+          "sogou",
+          "miui",
+          "xiaomi",
+          "microsoft",
+          "bing",
+          "github"
+        ],
+        "outbound": "CN"
+      },
+      {
+        "rule_set": [
+          "geosite-google",
+          "telegramip",
+          "proxy",
+          "games",
+          "ai"
+        ],
+        "outbound": "PROXY"
+      },
+      {
+        "action": "resolve"
+      },
+      {
+        "rule_set": [
+          "private",
+          "cn",
+          "cnip",
+          "microsoft-cn",
+          "apple-cn",
+          "google-cn",
+          "games-cn",
+          "networktest"
+        ],
+        "outbound": "CN"
+      },
+      {
+        "package_name": [
+          "com.google.android.youtube",
+          "app.revanced.android.youtube",
+          "org.telegram.messenger",
+          "org.telegram.messenger.beta",
+          "com.twitter.android",
+          "com.zhiliaoapp.musically",
+          "com.zhiliaoapp.musically.go",
+          "com.discord",
+          "com.reddit.frontpage",
+          "com.spotify.music",
+          "tv.twitch.android.app"
+        ],
+        "outbound": "PROXY"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "geosite-category-ads-all",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-category-ads-all.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite_adguard",
+        "url": "https://cdn.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblocksingbox.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-google",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-google.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "proxy",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/proxy.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "games",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "ai",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/ai.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "private",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/private.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "microsoft-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/microsoft-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "apple-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/apple-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "google-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/google-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "games-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "networktest",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/networktest.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "telegramip",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/telegramip.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "cnip",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cnip.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      }
+    ],
+    "final": "PROXY",
+    "find_process": true,
+    "auto_detect_interface": true,
+    "default_domain_resolver": "alidns_doh"
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db",
+      "cache_id": "cinchov",
+      "store_fakeip": true,
+      "store_rdrc": true,
+      "rdrc_timeout": "168h0m0s"
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "ui",
+      "external_ui_download_url": "https://github.com/MetaCubeX/metacubexd/archive/gh-pages.zip",
+      "external_ui_download_detour": "PROXY",
+      "secret": "kSDuU2WHyf72taGMdDS0ib6klwFVF5QIM4HGhS5f4Jw=",
+      "default_mode": "rule"
+    }
+  }
+}
