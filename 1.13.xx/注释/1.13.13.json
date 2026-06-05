@@ -1,0 +1,1001 @@
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║          sing-box 完整配置文件（带详细中文注释版）                        ║
+// ║  说明：JSON 标准不支持 // 注释，此文件为阅读/学习用途，                       ║
+// ║       实际使用时请删除所有 // 注释行，或使用 sing-box 的 jsonc 解析模式。     ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+{
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【1】日志配置
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "log": {
+    // level 日志等级：trace / debug / info / warn / error / fatal / panic
+    // fatal = 只记录致命错误，性能最优，日常使用推荐。
+    // 疑惑：为什么不用 info？info 会打印大量连接日志，占用 IO，
+    //       调试完成后改为 fatal 或 warn 即可。
+    "level": "fatal",
+
+    // timestamp 是否在日志前面显示时间戳，true = 开启，方便排查问题
+    "timestamp": true
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【2】DNS 配置 —— 核心模块，决定域名如何被解析
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "dns": {
+
+    // ── 2.1 DNS 服务器列表 ─────────────────
+    "servers": [
+
+      // ① local —— 系统本地 DNS（走操作系统默认解析，通常是路由器 DNS）
+      //    用途：解析局域网设备域名，如 miwifi.com / router.asus.com
+      {
+        "type": "local",
+        "tag": "local"
+      },
+
+      // ② alidns_doh —— 阿里 DoH（DNS over HTTPS）
+      //    说明：DoH 把 DNS 请求封装在 HTTPS 中，运营商无法劫持/监听。
+      //    domain_resolver：用 alidns_quic 来解析 dns.alidns.com 本身的 IP，
+      //                     避免"鸡和蛋"的循环依赖问题。
+      //    疑惑：为什么要先用 UDP 解析 DoH 的域名？
+      //    回答：DoH 服务器地址是域名（dns.alidns.com），在建立 HTTPS 之前
+      //          必须先把这个域名解析成 IP，所以需要一个"引导 DNS"。
+      {
+        "type": "https",
+        "tag": "alidns_doh",
+        "domain_resolver": "alidns_quic",  // 用下面的 UDP 服务器来解析自身域名
+        "server": "dns.alidns.com"
+      },
+
+      // ③ alidns_quic —— 阿里 UDP DNS（223.5.5.5）
+      //    仅作为 alidns_doh 的"引导解析器"，不直接用于流量分流。
+      //    说明：223.5.5.5 是阿里公共 DNS，国内速度快，专为引导使用。
+      {
+        "type": "udp",
+        "tag": "alidns_quic",
+        "server": "223.5.5.5"
+      },
+
+      // ④ fakeip —— 虚假 IP 服务器
+      //    核心机制说明：
+      //    当某个域名匹配代理规则时，返回一个假的 IP（198.18.x.x 段），
+      //    应用拿到假 IP 发起连接，sing-box 拦截后通过 fakeip 反查出域名，
+      //    再走代理发出真实请求。这样代理侧拿到的是域名而不是 IP，
+      //    可以正确匹配规则，也避免 DNS 污染。
+      //    疑惑：198.18.0.0/15 是什么地址？
+      //    回答：这是 RFC 2544 定义的"基准测试保留地址"，正常互联网不会
+      //          路由这段 IP，所以用作 fakeip 虚假地址非常安全。
+      {
+        "type": "fakeip",
+        "tag": "fakeip",
+        "inet4_range": "198.18.0.0/15"
+      },
+
+      // ⑤ ggdns_doh —— 谷歌 DoH（通过代理访问）
+      //    detour: "PROXY" 表示此 DNS 查询走代理出站，用于解析代理域名。
+      //    用途：作为 final（兜底 DNS），当其他规则都不匹配时使用。
+      //    说明：google 的 DNS 抗污染能力强，适合解析境外域名。
+      {
+        "type": "https",
+        "tag": "ggdns_doh",
+        "detour": "PROXY",              // 走代理出站
+        "domain_resolver": "alidns_quic",
+        "server": "dns.google"
+      }
+    ],
+
+    // ── 2.2 DNS 路由规则（按顺序匹配，先匹配先生效）─────────────────
+    "rules": [
+
+      // 规则①：局域网/路由器域名 → 使用本地 DNS
+      //   .local / .lan 是 mDNS 本地域名；
+      //   miwifi.com / tplogin.cn 等是各品牌路由器管理页面域名。
+      //   疑惑：为什么要单独处理路由器域名？
+      //   回答：这些域名只在局域网内有效，发给公共 DNS 解析不到，
+      //         必须用本地 DNS 才能正确解析到路由器 IP。
+      {
+        "domain_suffix": [
+          ".local",
+          ".lan",
+          "miwifi.com",
+          "tplogin.cn",
+          "router.asus.com",
+          "tendawifi.com",
+          "tplinkwifi.net"
+        ],
+        "server": "local"
+      },
+
+      // 规则②：明确的国内域名后缀 → 使用阿里 DoH
+      //   .cn / .com.cn 是中国顶级域名；
+      //   msftncsi.com / msftconnecttest.com 是微软网络连通性检测域名，
+      //   直连解析可以让 Windows 正确识别网络状态；
+      //   lancache.steamcontent.com 是 Steam 局域网缓存服务器。
+      {
+        "domain_suffix": [
+          ".cn",
+          ".com.cn",
+          "msftncsi.com",
+          "msftconnecttest.com",
+          "lancache.steamcontent.com"
+        ],
+        "server": "alidns_doh"
+      },
+
+      // 规则③：国内规则集 → 使用阿里 DoH
+      //   通过远程规则集（rule_set）批量匹配国内网站，使用国内 DNS 解析。
+      //   networktest：网络测速相关域名，直连解析更准确。
+      {
+        "rule_set": [
+          "cn",           // 中国大陆域名合集
+          "private",      // 私有 IP / 局域网
+          "microsoft-cn", // 微软国内服务
+          "apple-cn",     // 苹果国内服务
+          "google-cn",    // 谷歌国内服务（如谷歌中国镜像）
+          "games-cn",     // 国内游戏
+          "networktest"   // 测速域名
+        ],
+        "server": "alidns_doh"
+      },
+
+      // 规则④：广告域名 → 拒绝解析（DNS 层拦截广告）
+      //   action: "reject" 直接返回 NXDOMAIN（域名不存在），
+      //   比路由层 reject 更早、更彻底，节省资源。
+      //   geosite_adguard：AdGuard 广告过滤规则集；
+      //   geosite-category-ads-all：SagerNet 广告域名合集；
+      //   ads-extra：额外补充广告规则。
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all",
+          "ads-extra"
+        ],
+        "action": "reject"
+      },
+
+      // 规则⑤：已知追踪/遥测域名 → 拒绝解析
+      //   这些是各大厂商的数据统计、用户行为追踪服务，
+      //   在 DNS 层直接屏蔽，比防火墙规则更轻量。
+      //   说明：app-measurement.com 是 Firebase 统计；
+      //         hm.baidu.com 是百度统计；tracking.miui.com 是小米遥测。
+      {
+        "domain_suffix": [
+          "app-measurement.com",
+          "hm.baidu.com",
+          "firebaselogging.googleapis.com",
+          "firebaselogging-pa.googleapis.com",
+          "beacons.gvt2.com",
+          "beacons2.gvt2.com",
+          "beacons3.gvt2.com",
+          "tracking.miui.com",
+          "market.xiaomi.com"
+        ],
+        "action": "reject"
+      },
+
+      // 规则⑥：IPv6 查询 → 拒绝
+      //   ip_version: 6 即拒绝 AAAA 记录的 IPv6 解析请求。
+      //   配合最下方 strategy: "ipv4_only"，强制全局使用 IPv4。
+      //   疑惑：为什么要禁用 IPv6？
+      //   回答：当前大多数代理协议对 IPv6 支持不完整，
+      //         混用会导致绕过代理直连、或连接异常，纯 IPv4 更稳定。
+      {
+        "ip_version": 6,
+        "action": "reject"
+      },
+
+      // 规则⑦：拒绝 SVCB / HTTPS / PTR 类型的 DNS 查询
+      //   SVCB/HTTPS：新型 DNS 记录，用于 HTTP/3 服务发现，
+      //               代理环境下容易导致连接绕过，直接屏蔽。
+      //   PTR：反向 DNS 查询（IP→域名），代理下无意义且可能泄露信息。
+      {
+        "query_type": [
+          "SVCB",
+          "HTTPS",
+          "PTR"
+        ],
+        "action": "reject"
+      },
+
+      // 规则⑧：拒绝非 A/AAAA 类型的所有查询（白名单模式）
+      //   invert: true 表示"反向匹配"，即：
+      //   匹配到"不是 A 且不是 AAAA"的查询类型，一律拒绝。
+      //   说明：只放行 IPv4(A) 记录，其他如 MX/TXT/NS 等全部屏蔽，
+      //         极大减少无效 DNS 请求，提升安全性。
+      //   疑惑：上面已经 reject 了 AAAA，这里为什么还写 AAAA？
+      //   回答：这条规则的 invert 逻辑是"只要不是 A 和 AAAA 就拒绝"，
+      //         目的是保留 A 请求，同时让上面的规则⑥先拦截 AAAA，
+      //         此规则兜底拦截其他所有类型。
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "invert": true,   // 反向：即"不是 A 且不是 AAAA"的查询
+        "action": "reject"
+      },
+
+      // 规则⑨：代理域名规则集 → 使用 fakeip 解析
+      //   rewrite_ttl: 300 把返回的 fakeip 的 TTL 设为 300 秒（5分钟），
+      //   防止系统缓存过久导致 fakeip 映射失效。
+      //   这些域名需要走代理，fakeip 确保流量被 TUN 接管后正确路由。
+      {
+        "rule_set": [
+          "geosite-google",
+          "geosite-youtube",
+          "geosite-instagram",
+          "proxy",
+          "games",
+          "ai",
+          "gfw",
+          "global-media",
+          "google-sns",
+          "android-sys"
+        ],
+        "server": "fakeip",
+        "rewrite_ttl": 300
+      },
+
+      // 规则⑩：谷歌全家桶域名 → fakeip（精确补充）
+      //   说明：上面的 geosite-google 规则集已覆盖大部分，
+      //   这里手动列出 googleapis.com / youtube.com 等核心域名做精确补充，
+      //   防止规则集更新不及时时遗漏。
+      //   疑惑：play.google.com 不也在 geosite-google 里吗？
+      //   回答：是的，这里是双重保险，确保 Google 服务绝对走 fakeip。
+      {
+        "domain_suffix": [
+          "play.google.com",
+          "play.googleapis.com",
+          "android.clients.google.com",
+          "android.googleapis.com",
+          "dl.google.com",
+          "dl.l.google.com",
+          "gvt1.com",
+          "gvt2.com",
+          "gvt3.com",
+          "services.googleapis.com",
+          "googleapis.com",
+          "gstatic.com",
+          "google.com",
+          "google.com.hk",
+          "ggpht.com",
+          "googleusercontent.com",
+          "youtube.com",
+          "ytimg.com",
+          "googlevideo.com"
+        ],
+        "server": "fakeip"
+      },
+
+      // 规则⑪：fakeip 白名单 → 使用真实 DNS（阿里 DoH）
+      //   有些域名不能用 fakeip（如需要真实 IP 的 STUN、P2P 场景），
+      //   fakeip-filter 规则集列出这些域名，让它们走真实解析。
+      {
+        "rule_set": "fakeip-filter",
+        "server": "alidns_doh"
+      },
+
+      // 规则⑫：Clash 模式 direct → 使用阿里 DoH
+      //   当用户在面板手动切换为"直连"模式时，DNS 也随之走国内服务器。
+      {
+        "clash_mode": "direct",
+        "server": "alidns_doh"
+      },
+
+      // 规则⑬：Clash 模式 global → 使用 fakeip
+      //   当用户在面板切换为"全局代理"模式时，所有 DNS 都走 fakeip，
+      //   确保全部流量经过代理。
+      {
+        "clash_mode": "global",
+        "server": "fakeip"
+      }
+    ],
+
+    // final：以上所有规则都不匹配时的兜底 DNS → 谷歌 DoH（走代理）
+    // 说明：境外未知域名默认走谷歌 DNS，抗污染，通过代理访问。
+    "final": "ggdns_doh",
+
+    // reverse_mapping：开启 fakeip 反向映射
+    // 说明：当 sing-box 收到发往 fakeip 地址的连接时，
+    //       通过反向映射找回原始域名，交给代理发起连接。必须开启。
+    "reverse_mapping": true,
+
+    // strategy：DNS 解析策略，ipv4_only = 只解析 IPv4 地址
+    "strategy": "ipv4_only",
+
+    // cache_capacity：DNS 缓存容量（条目数），16384 条，内存占用约 1-2MB
+    // 说明：缓存越大，重复查询响应越快，一般家用设备 16384 足够。
+    "cache_capacity": 16384
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【3】NTP 时间同步配置
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 疑惑：代理工具为什么需要 NTP？
+  // 回答：TLS 证书验证依赖系统时间，时间偏差超过 5 分钟会导致 TLS 握手失败，
+  //       移动设备/嵌入式设备的系统时间可能不准，sing-box 内置 NTP 自动纠偏。
+  "ntp": {
+    "enabled": true,
+    "interval": "30m0s",    // 每 30 分钟同步一次
+    "server": "ntp.aliyun.com",  // 阿里云 NTP 服务器，国内延迟低
+    "server_port": 123           // NTP 标准端口
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【4】入站（Inbounds）—— 接收本机流量的方式
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "inbounds": [
+
+    // ── 4.1 TUN 入站 —— 虚拟网卡模式（推荐，接管全部流量）─────────────
+    // 说明：sing-box 在系统层创建虚拟网卡 tun-in，
+    //       所有 TCP/UDP 流量自动经过此网卡，无需给每个 APP 单独配置代理。
+    {
+      "type": "tun",
+      "tag": "tun-in",
+
+      // mtu：最大传输单元，1500 是以太网标准值。
+      // 疑惑：MTU 太大或太小有什么影响？
+      // 回答：太大会导致分包，太小会增加包头开销。
+      //       TUN 模式下 1500 是安全值，如果出现丢包可尝试改为 1400。
+      "mtu": 1500,
+
+      // address：TUN 网卡的 IPv4 地址，作为虚拟路由器 IP。
+      // 说明：10.8.0.1/24 是私有地址，不影响局域网其他设备。
+      "address": "10.8.0.1/24",
+
+      // auto_route：自动添加系统路由规则，将流量导入 TUN 网卡。true = 必须开启。
+      "auto_route": true,
+
+      // strict_route：严格路由模式，防止流量绕过 TUN。
+      // 说明：开启后会阻止直接访问物理网卡，确保所有流量都经过代理处理。
+      "strict_route": true,
+
+      // udp_timeout：UDP 会话超时时间，5 分钟内无数据则关闭会话。
+      "udp_timeout": "5m0s",
+
+      // stack：TCP 协议栈实现。
+      // mixed = 混合模式：gVisor（用户态协议栈）+ system（系统协议栈）按需切换，
+      //         兼顾兼容性和性能，推荐使用。
+      "stack": "mixed",
+
+      // endpoint_independent_nat：独立端点 NAT，提升 UDP 打洞成功率。
+      // 说明：对 P2P 游戏、视频通话等 UDP 应用有改善效果。
+      "endpoint_independent_nat": true
+    },
+
+    // ── 4.2 Mixed 入站 —— HTTP+SOCKS5 混合代理端口 ─────────────────
+    // 说明：监听 127.0.0.1:7890，供浏览器/应用手动设置代理使用。
+    //       mixed 模式同时支持 HTTP 代理和 SOCKS5 代理，一个端口通吃。
+    // 疑惑：既然有了 TUN 为什么还要 mixed 端口？
+    // 回答：TUN 接管全局，但某些容器/WSL/虚拟机环境无法用 TUN，
+    //       或用户临时只想让浏览器走代理，mixed 端口更灵活。
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",  // 只监听本机，不暴露给局域网
+      "listen_port": 7890
+    }
+  ],
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【5】出站（Outbounds）—— 流量发出的方式
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "outbounds": [
+
+    // ① DIRECT —— 直连出站，流量不经过任何代理
+    {
+      "type": "direct",
+      "tag": "DIRECT"
+    },
+
+    // ② PROXY —— 主选择器（手动选择代理节点）
+    //   说明：selector 类型允许用户在面板手动切换当前使用的出站。
+    //   outbounds 列表中填入节点名称，用户在面板可以看到并切换。
+    //   疑惑：AUTO 和具体节点有什么区别？
+    //   回答：AUTO 是 urltest 自动测速选最快节点；具体节点是手动指定。
+    //         建议平时用 AUTO，需要特定地区时手动切到具体节点。
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [
+        "AUTO",
+        // ← 在这里填入你的节点名称，例如："香港01", "日本01"
+        "DIRECT"
+      ],
+      "default": "AUTO"  // 默认使用自动选速
+    },
+
+    // ③ AUTO —— 自动测速选择器（urltest）
+    //   说明：定期对所有节点发起 HTTP 测速请求，自动选择延迟最低的节点。
+    //   url: cloudflare 测速地址，全球可达，测速稳定。
+    //   interval: 每 3 分钟测速一次。
+    //   tolerance: 50ms，新节点延迟比当前节点低超过 50ms 才切换，防止频繁抖动。
+    //   idle_timeout: 10分钟无流量则暂停测速，节省资源。
+    {
+      "type": "urltest",
+      "tag": "AUTO",
+      "outbounds": [
+        // ← 在这里填入参与自动测速的节点名称
+      ],
+      "url": "http://cp.cloudflare.com/",
+      "interval": "3m0s",
+      "tolerance": 50,
+      "idle_timeout": "10m0s"
+    },
+
+    // ④ GLOBAL —— 全局代理选择器
+    //   说明：面板切换为"全局"模式时使用，所有流量走代理。
+    //   疑惑：GLOBAL 和 PROXY 有什么区别？
+    //   回答：PROXY 是路由规则里"需要代理的流量"用的出站；
+    //         GLOBAL 是用户主动选择"全局"模式时接管所有流量的出站，
+    //         两者通过 clash_mode 路由规则来区分触发时机。
+    {
+      "type": "selector",
+      "tag": "GLOBAL",
+      "outbounds": [
+        "PROXY",
+        "DIRECT"
+      ],
+      "default": "PROXY"
+    },
+
+    // ⑤ CN —— 国内直连选择器
+    //   说明：国内流量走直连，必要时可手动切换为代理（用于测试）。
+    {
+      "type": "selector",
+      "tag": "CN",
+      "outbounds": [
+        "DIRECT",
+        "PROXY"
+      ],
+      "default": "DIRECT"
+    }
+
+    // ← 节点配置写在这里（vmess / vless / trojan / shadowsocks 等）
+    // 示例结构：
+    // {
+    //   "type": "vless",
+    //   "tag": "香港01",
+    //   "server": "1.2.3.4",
+    //   "server_port": 443,
+    //   "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    //   "tls": { "enabled": true, "server_name": "example.com" }
+    // }
+  ],
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【6】路由（Route）—— 决定流量走 DIRECT / PROXY / CN / REJECT
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "route": {
+    "rules": [
+
+      // 路由规则①：DNS 劫持 —— 将所有 DNS 请求转给 sing-box 内置 DNS
+      //   说明：type: "logical" + mode: "or" 表示两个子规则满足其一即匹配。
+      //   匹配条件：UDP/TCP 53 端口 OR 协议识别为 dns。
+      //   action: "hijack-dns" 把这些请求转给 [dns] 模块处理，
+      //   防止应用使用系统 DNS 绕过 sing-box 分流。
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          { "port": 53 },
+          { "protocol": "dns" }
+        ],
+        "action": "hijack-dns"
+      },
+
+      // 路由规则②：流量嗅探
+      //   action: "sniff" 不做路由决策，只是开启协议识别（HTTP/TLS/QUIC），
+      //   识别出的域名（SNI）供后续规则匹配使用。
+      //   疑惑：sniff 一定要放在最前面吗？
+      //   回答：建议放在 DNS 劫持之后、实际路由规则之前，
+      //         这样后续规则就能用识别出的域名进行精确匹配。
+      {
+        "action": "sniff"
+      },
+
+      // 路由规则③：小米路由器管理页面 → 直连国内出站
+      //   说明：miwifi.com 的管理页面只能在局域网访问，
+      //         走 CN 出站（直连）确保访问路由器时不出问题。
+      {
+        "domain_suffix": "miwifi.com",
+        "outbound": "CN"
+      },
+
+      // 路由规则④：Clash 直连模式 → DIRECT
+      {
+        "clash_mode": "direct",
+        "outbound": "DIRECT"
+      },
+
+      // 路由规则⑤：Clash 全局模式 → GLOBAL
+      {
+        "clash_mode": "global",
+        "outbound": "GLOBAL"
+      },
+
+      // 路由规则⑥：私有 IP → 直连
+      //   说明：192.168.x.x / 10.x.x.x / 172.16-31.x.x 等私有地址直连，
+      //         访问局域网设备不走代理。
+      {
+        "ip_is_private": true,
+        "outbound": "DIRECT"
+      },
+
+      // 路由规则⑦：fakeip 地址段 → 走代理
+      //   说明：198.18.0.0/15 是 fakeip 分配的虚假 IP 段，
+      //         收到发往此地址的连接，说明目标是需要代理的域名，
+      //         直接走 PROXY 出站。
+      //   疑惑：为什么 fakeip 还需要路由规则来匹配？
+      //   回答：DNS 返回 fakeip 后，应用发起 TCP/UDP 连接到这个假 IP，
+      //         路由规则匹配到这个 IP 段，就知道该走代理，
+      //         代理侧通过 reverse_mapping 找到真实域名再发出请求。
+      {
+        "ip_cidr": "198.18.0.0/15",
+        "outbound": "PROXY"
+      },
+
+      // 路由规则⑧：广告 + 反诈 域名 → 拒绝连接
+      //   说明：anti_fraud 是反电信诈骗规则集，屏蔽已知诈骗域名。
+      //         在路由层 reject，即使 DNS 没有拦截也能阻断 TCP 连接。
+      {
+        "rule_set": [
+          "geosite_adguard",
+          "geosite-category-ads-all",
+          "ads-extra",
+          "anti_fraud"
+        ],
+        "action": "reject"
+      },
+
+      // 路由规则⑨：国内主流平台域名后缀 → CN 直连
+      //   说明：手动列出知乎、京东、抖音、飞书、美团、拼多多、
+      //         携程、阿里云、华为云、字节、小红书等国内大厂域名。
+      //   疑惑：这些域名是否已经被 cn 规则集覆盖了？
+      //   回答：cn 规则集覆盖的是中国顶级域 .cn，而 .com 下的国内域名
+      //         （如 taobao.com / jd.com）不在其中，需要手动补充。
+      {
+        "domain_suffix": [
+          "steamserver.net",     // Steam 国服服务器
+          "zhihu.com", "zhimg.com",
+          "jd.com", "360buyimg.com",
+          "xfyun.cn",            // 科大讯飞
+          "10010.com",           // 联通
+          "10086.cn",            // 移动
+          "12306.cn",            // 铁路 12306
+          "189.cn",              // 电信
+          "douyin.com", "douyincdn.com", "douyinpic.com",
+          "feishu.cn", "feishucdn.com",
+          "kuaishou.com", "yximgs.com",
+          "meituan.com", "meituan.net",
+          "dianping.com",
+          "pinduoduo.com", "yangkeduo.com",
+          "ctrip.com", "qunar.com",
+          "alibabacloud.com", "aliyun.com", "aliyuncs.com",
+          "huawei.com", "huaweicloud.com",
+          "bytedance.com", "byteimg.com",
+          "xiaohongshu.com", "xhscdn.com"
+        ],
+        "outbound": "CN"
+      },
+
+      // 路由规则⑩：国内平台域名关键词 → CN 直连
+      //   说明：使用关键词匹配，覆盖域名变体（如 bilivideo.cn / bilivideo.com）。
+      //   疑惑：domain_suffix 和 domain_keyword 有什么区别？
+      //   回答：domain_suffix 精确匹配域名后缀（如 .bilibili.com）；
+      //         domain_keyword 是模糊匹配，只要域名包含关键词就命中，
+      //         覆盖面更广但可能误匹配（如含"baidu"的非百度域名）。
+      {
+        "domain_keyword": [
+          "bilibili", "bilivideo", "hdslb",
+          "iqiyi", "qiyi",
+          "youku",
+          "xunlei",
+          "alipay",
+          "taobao", "alicdn",
+          "weixin", "wechat", "tencent", "qq.com",
+          "baidu", "sogou",
+          "miui", "xiaomi",
+          "microsoft", "bing",
+          "netease", "163.com", "126.com",
+          "douyu", "huya",
+          "smzdm",   // 什么值得买
+          "csdn", "cnblogs", "oschina", "jianshu",  // 技术社区
+          "zhangyue", "qidian"  // 阅读平台
+        ],
+        "outbound": "CN"
+      },
+
+      // 路由规则⑪：代理域名规则集 → PROXY
+      //   说明：Google / YouTube / Instagram / Telegram 等境外服务走代理。
+      //   fcm：Firebase Cloud Messaging，APP 推送通知服务，需要代理才能收到境外 APP 推送。
+      //   android-sys：Android 系统更新/验证相关域名，在国内需要代理。
+      {
+        "rule_set": [
+          "geosite-google",
+          "geosite-youtube",
+          "geosite-instagram",
+          "telegram",
+          "telegramip",
+          "proxy",
+          "gfw",
+          "global-media",
+          "google-sns",
+          "games",
+          "ai",
+          "fcm",
+          "android-sys"
+        ],
+        "outbound": "PROXY"
+      },
+
+      // 路由规则⑫：GitHub 相关域名 → PROXY
+      //   说明：GitHub 在国内访问不稳定，单独列出保障直接走代理。
+      {
+        "domain_suffix": [
+          "github.com",
+          "github.io",
+          "githubassets.com",
+          "githubusercontent.com"  // GitHub 文件 CDN
+        ],
+        "outbound": "PROXY"
+      },
+
+      // 路由规则⑬：执行 DNS 解析（resolve）
+      //   说明：在此之前的规则都基于域名匹配；
+      //         resolve 之后，对于没命中的流量，
+      //         sing-box 会把域名解析为真实 IP，再用下面的 IP 规则匹配。
+      //   疑惑：为什么要在中间插一个 resolve？
+      //   回答：resolve 之前全部是域名规则（快），resolve 之后转为 IP 规则，
+      //         分两阶段处理：先精确匹配域名，再按 IP 地理归属分流，效率最优。
+      {
+        "action": "resolve"
+      },
+
+      // 路由规则⑭：国内 IP 规则集 → CN 直连（IP 层匹配）
+      //   说明：经过 resolve 后，未命中域名规则的流量变成了真实 IP，
+      //         这里用 cnip 规则集匹配中国大陆 IP 段，确保直连。
+      //         microsoft-cn / apple-cn / google-cn 的国内 IP 也直连（如 CDN）。
+      {
+        "rule_set": [
+          "private",
+          "cn",
+          "cnip",          // 中国大陆 IP 段
+          "microsoft-cn",
+          "apple-cn",
+          "google-cn",
+          "games-cn",
+          "networktest"
+        ],
+        "outbound": "CN"
+      },
+
+      // 路由规则⑮：Android 包名匹配 → PROXY（仅 Android 平台有效）
+      //   说明：通过应用包名精确控制特定 APP 的出站，
+      //         适用于 sing-box Android 客户端，比域名匹配更可靠。
+      //   疑惑：为什么要同时用域名规则和包名规则？
+      //   回答：某些 APP 使用了 IP 直连而非域名，包名规则可以捕获这类流量；
+      //         域名规则覆盖浏览器访问和其他无包名环境。
+      {
+        "package_name": [
+          "com.google.android.youtube",
+          "app.revanced.android.youtube",      // YouTube ReVanced（修改版）
+          "org.telegram.messenger",
+          "org.telegram.messenger.beta",
+          "com.twitter.android",               // 现已改名 X
+          "com.zhiliaoapp.musically",          // TikTok
+          "com.zhiliaoapp.musically.go",       // TikTok Go
+          "com.discord",
+          "com.reddit.frontpage",
+          "com.spotify.music",
+          "tv.twitch.android.app"
+        ],
+        "outbound": "PROXY"
+      }
+    ],
+
+    // ── 6.2 规则集（Rule Sets）—— 远程订阅规则文件 ─────────────────
+    // 说明：所有规则集均来自 jsDelivr CDN，48 小时自动更新一次。
+    // download_detour: "DIRECT" 表示下载规则集时直连，不走代理。
+    // 疑惑：为什么下载规则集用 DIRECT 而不是 PROXY？
+    // 回答：jsDelivr 是 CDN，国内可直接访问；
+    //       如果走代理下载，反而可能因为代理未就绪而失败。
+    "rule_set": [
+
+      // 广告过滤类
+      {
+        "type": "remote",
+        "tag": "geosite-category-ads-all",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-category-ads-all.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite_adguard",          // AdGuard 广告过滤（更新频繁，覆盖更广）
+        "url": "https://cdn.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblocksingbox.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "ads-extra",               // DustinWin 额外广告规则
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/ads.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 谷歌系服务
+      {
+        "type": "remote",
+        "tag": "geosite-google",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-google.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-youtube",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-youtube.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "google-sns",              // senshinya 整理的 Google 服务规则
+        "url": "https://cdn.jsdelivr.net/gh/senshinya/singbox_ruleset@main/rule/Google/Google.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 代理/翻墙类
+      {
+        "type": "remote",
+        "tag": "proxy",                   // DustinWin 代理域名合集
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/proxy.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "gfw",                     // GFW 封锁域名列表
+        "url": "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/gfw.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "global-media",            // 境外流媒体（Netflix/Disney+/Hulu 等）
+        "url": "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/category-entertainment.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 社交媒体
+      {
+        "type": "remote",
+        "tag": "geosite-instagram",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-instagram.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "telegram",               // Telegram 域名
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-telegram.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "telegramip",             // Telegram IP 段
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/telegramip.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 游戏类
+      {
+        "type": "remote",
+        "tag": "games",                  // 境外游戏（Steam/Epic/Xbox 等）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "games-cn",               // 国内游戏（王者/原神国服等）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/games-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // AI 服务
+      {
+        "type": "remote",
+        "tag": "ai",                     // ChatGPT / Gemini / Claude 等 AI 服务
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/ai.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 国内规则集
+      {
+        "type": "remote",
+        "tag": "private",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/private.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "cn",                     // 中国大陆域名（.cn 以外的国内域名）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "cnip",                   // 中国大陆 IP 地址段（APNIC 数据）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/cnip.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "microsoft-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/microsoft-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "apple-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/apple-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "google-cn",
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/google-cn.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "networktest",            // 网络连通性测试域名（speedtest 等）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/networktest.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+
+      // 特殊用途
+      {
+        "type": "remote",
+        "tag": "fakeip-filter",          // fakeip 白名单（这些域名不使用 fakeip）
+        "url": "https://cdn.jsdelivr.net/gh/DustinWin/ruleset_geodata@sing-box-ruleset/fakeip-filter.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "fcm",                    // Firebase 推送通知
+        "url": "https://cdn.jsdelivr.net/gh/senshinya/singbox_ruleset@main/rule/GoogleFCM/GoogleFCM.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "android-sys",            // Android 系统服务域名
+        "url": "https://cdn.jsdelivr.net/gh/senshinya/singbox_ruleset@main/rule/Android/Android.srs",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      },
+      {
+        "type": "remote",
+        "tag": "anti_fraud",             // 反诈骗/钓鱼网站规则
+        "url": "https://cdn.jsdelivr.net/gh/hwsaya/nothing@main/rules/FuckFZ.json",
+        "download_detour": "DIRECT",
+        "update_interval": "48h0m0s"
+      }
+    ],
+
+    // final：所有路由规则都不匹配时，兜底走 PROXY
+    // 说明：未知域名/IP 默认走代理，安全性更高（宁可绕路，不要直连泄露）。
+    "final": "PROXY",
+
+    // find_process：识别发起连接的进程名，用于日志和规则匹配
+    "find_process": true,
+
+    // auto_detect_interface：自动检测出口网卡，支持多网卡/网络切换。
+    // 疑惑：如果不开启会怎样？
+    // 回答：在有线+无线切换、或连接 VPN 时，出口网卡会变化，
+    //       不开启则 sing-box 可能仍绑定旧网卡，导致无法上网。
+    "auto_detect_interface": true,
+
+    // default_domain_resolver：默认域名解析器，
+    // 用于路由规则中需要解析域名但未指定 DNS 服务器的情况。
+    "default_domain_resolver": "alidns_doh"
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 【7】实验性功能（Experimental）
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "experimental": {
+
+    // ── 7.1 缓存文件 ─────────────────────────────
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db",            // 缓存数据库文件路径（相对于工作目录）
+
+      // cache_id：缓存标识符，不同 ID 的缓存互不干扰。
+      // 疑惑：修改 cache_id 有什么效果？
+      // 回答：相当于清空缓存，当 fakeip 映射混乱或 DNS 缓存有问题时，
+      //       修改此值可以强制重建缓存，相当于"清缓存"。
+      "cache_id": "cinchov",
+
+      // store_fakeip：持久化保存 fakeip 映射，重启后不会丢失映射关系。
+      "store_fakeip": true,
+
+      // store_rdrc：保存 RDRC（反向 DNS 路由缓存）
+      // rdrc_timeout：RDRC 记录有效期 168 小时（7天）
+      "store_rdrc": true,
+      "rdrc_timeout": "168h0m0s"
+    },
+
+    // ── 7.2 Clash API —— Web 管理面板 ────────────────────────────
+    // 说明：兼容 Clash 的 RESTful API，可使用 metacubexd 等面板控制 sing-box。
+    "clash_api": {
+      // external_controller：API 监听地址，只监听本机 9090 端口。
+      "external_controller": "127.0.0.1:9090",
+
+      // external_ui：面板静态文件目录，相对于工作目录。
+      "external_ui": "ui",
+
+      // external_ui_download_url：首次启动若 ui 目录不存在，自动下载此面板。
+      // 使用 MetaCubeX 的 metacubexd（现代化 Clash 面板）。
+      "external_ui_download_url": "https://github.com/MetaCubeX/metacubexd/archive/gh-pages.zip",
+
+      // 下载面板文件时走代理（因为 GitHub 可能需要代理）。
+      "external_ui_download_detour": "PROXY",
+
+      // secret：API 访问密钥，面板登录时需要填写。
+      // ⚠️ 安全提示：请修改为你自己的随机字符串，不要使用默认值！
+      //    可用命令生成：openssl rand -base64 32
+      "secret": "kSDuU2WHyf72taGMdDS0ib6klwFVF5QIM4HGhS5f4Jw=",
+
+      // default_mode：默认分流模式，rule = 按规则分流（推荐）。
+      // 可选：rule（规则）/ global（全局代理）/ direct（全局直连）
+      "default_mode": "rule"
+    }
+  }
+}
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║                      常见疑惑总结                                    ║
+// ╠══════════════════════════════════════════════════════════════════╣
+// ║                                                                  ║
+// ║  Q1：fakeip 和 realip 的本质区别？                                   ║
+// ║  A1：fakeip 返回虚假 IP 让 TUN 接管后通过域名走代理；                    ║
+// ║       realip 返回真实 IP，适合不支持域名代理的应用（如游戏、P2P）。          ║
+// ║                                                                  ║
+// ║  Q2：规则顺序很重要吗？                                               ║
+// ║  A2：非常重要！sing-box 按顺序匹配，第一条命中就停止，                      ║
+// ║       国内域名规则必须在代理规则之前，否则可能误走代理。                       ║
+// ║                                                                  ║
+// ║  Q3：为什么 download_detour 都是 DIRECT？                            ║
+// ║  A3：规则集文件托管在 jsDelivr，国内直连速度快；                           ║
+// ║       若使用代理下载，启动时代理可能还未就绪，导致下载失败。                    ║
+// ║                                                                  ║
+// ║  Q4：cache_id 用于什么场景？                                          ║
+// ║  A4：更换配置后旧的 fakeip 缓存可能与新规则冲突，                           ║
+// ║       修改 cache_id 强制重建缓存，解决奇怪的连接问题。                       ║
+// ║                                                                  ║
+// ║  Q5：如何添加节点？                                                   ║
+// ║  A5：在 outbounds 的"节点配置"注释处添加 vless/vmess/trojan 配置，         ║
+// ║       然后把节点的 tag 值添加到 PROXY 和 AUTO 的 outbounds 列表中。        ║
+// ║                                                                  ║
+// ╚══════════════════════════════════════════════════════════════════╝
