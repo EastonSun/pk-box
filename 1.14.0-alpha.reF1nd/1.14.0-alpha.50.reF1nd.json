@@ -12,6 +12,14 @@
           "cloudflare-dns.com": [
             "1.1.1.1",
             "1.0.0.1"
+          ],
+          "dns.adguard.com": [
+            "94.140.14.15",
+            "94.140.15.16"
+          ],
+          "dns.quad9.net": [
+            "9.9.9.9",
+            "149.112.112.112"
           ]
         }
       },
@@ -35,15 +43,14 @@
         "type": "https",
         "tag": "adguard-dns",
         "detour": "📦 sing-box",
-        "domain_resolver": "local-dns",
-        "server": "dns.adguard-dns.com",
-        "path": "/dns-query"
+        "domain_resolver": "hosts_fix",
+        "server": "dns.adguard.com"
       },
       {
         "type": "https",
         "tag": "quad9-doh",
         "detour": "📦 sing-box",
-        "domain_resolver": "local-dns",
+        "domain_resolver": "hosts_fix",
         "server": "dns.quad9.net"
       }
     ],
@@ -294,7 +301,7 @@
     {
       "type": "remote",
       "tag": "my_nodes",
-      "url": "订阅链接",
+      "url": "//订阅链接",
       "path": "./providers/my_nodes.json",
       "http_client": "default",
       "update_interval": "24h0m0s",
@@ -699,7 +706,7 @@
     ],
     "final": "🚦 FINAL",
     "auto_detect_interface": true,
-    "default_domain_resolver": "cf-dns",
+    "default_domain_resolver": "local-dns",
     "default_http_client": "default"
   },
   "experimental": {
